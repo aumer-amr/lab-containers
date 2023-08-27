@@ -16,6 +16,7 @@ jobs:
       matrix:
         include:
           - dockerfile: ./apps/site/Dockerfile
+            base: ./apps/site
             image: ghcr.io/aumer-amr/site
     permissions:
       contents: read
@@ -40,7 +41,7 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@f2a1d5e99d037542a71f64918e516c093c6f3fc4
         with:
-          context: .
+          context: ${{ matrix.base }}
           file: ${{ matrix.dockerfile }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
