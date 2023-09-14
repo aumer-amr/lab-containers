@@ -13,7 +13,7 @@ RUN npm run build
 
 EXPOSE 3000
 
-RUN ls -la
+RUN ls -la /home/node/app/dist
 
 USER node
-CMD [ "node", "dist/index.js"]
+CMD [ "node", "/home/node/app/dist/index.js"]
