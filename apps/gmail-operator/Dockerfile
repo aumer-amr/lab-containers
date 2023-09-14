@@ -13,5 +13,7 @@ RUN npm run build
 
 EXPOSE 3000
 
+RUN ls -la
+
 USER node
 CMD [ "node", "dist/index.js"]
