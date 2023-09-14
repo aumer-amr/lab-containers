@@ -14,6 +14,7 @@ RUN npm run build
 EXPOSE 3000
 
 RUN chown node:node *
+RUN ls -la /home/node/app/dist
 
 USER node
 CMD [ "node", "/home/node/app/dist/index.js"]
