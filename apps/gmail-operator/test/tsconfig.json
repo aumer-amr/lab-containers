@@ -1,0 +1,28 @@
+{
+    "compilerOptions": {
+        "target": "es2021",
+        "module": "CommonJS",
+        "resolveJsonModule": true,
+        "lib": ["es2021", "dom"],
+        "declaration": true,
+        "sourceMap": true,
+        "outDir": "../dist",
+        "rootDir": "../",
+        "strict": false,
+        "moduleResolution": "node",
+        "esModuleInterop": true,
+        "experimentalDecorators": true,
+        "emitDecoratorMetadata": true,
+        "emitDeclarationOnly": true,
+        "skipLibCheck": true,
+        "forceConsistentCasingInFileNames": true,
+        "allowImportingTsExtensions": true
+    },
+    "ts-node": {
+        "files": true
+    },
+    "exclude": ["dist", "node_modules", "tests"],
+    "include": [
+        "./**/*.ts"
+    ]
+}

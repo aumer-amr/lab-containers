@@ -1,3 +1,8 @@
 template/*
 node_modules
+.nyc_output
+coverage
+.env
+dist
+credentials.json
 npm-debug.log
