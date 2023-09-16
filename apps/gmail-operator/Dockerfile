@@ -17,4 +17,4 @@ RUN chown -R node:node /home/node/app
 RUN ls -la /home/node/app/dist
 
 USER node
-CMD [ "node", "/home/node/app/dist/index.js"]
+CMD [ "npm", "run", "start"]
