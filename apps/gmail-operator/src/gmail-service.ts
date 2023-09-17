@@ -18,7 +18,7 @@ export default class GmailService {
         
         this.client = new JWT({
             email,
-            keyFile: 'credentials.json',
+            keyFile: 'credentials/credentials.json',
             scopes: this.scopes,
             subject: email
         });
