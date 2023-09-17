@@ -23,11 +23,10 @@ FROM node:lts-alpine
 RUN apk add --update --no-cache dumb-init
 ENV NODE_ENV production
 USER node
-WORKDIR /usr/src/
-COPY --chown=node:node crds/*.yaml ./crds
 WORKDIR /usr/src/app
 COPY --chown=node:node --from=libraries /usr/src/app/node_modules /usr/src/app/node_modules
 
 COPY --chown=node:node --from=build /usr/src/app/dist/ /usr/src/app/
+COPY --chown=node:node ./crds /usr/src/app/crds
 EXPOSE 3000
 CMD ["dumb-init", "node", "index.js"]

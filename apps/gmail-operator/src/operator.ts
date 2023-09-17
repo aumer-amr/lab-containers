@@ -22,7 +22,7 @@ export default class GmailAddressOperator extends Operator {
 
         console.log(`GmailService init done`);
 
-        const crdFile = path.resolve(__dirname, '..', 'crds', 'gmail-address.yaml');
+        const crdFile = path.resolve(__dirname, 'crds', 'gmail-address.yaml');
         const { group, versions, plural } = await this.registerCustomResourceDefinition(crdFile);
 
         await this.watchResource(group, versions[0].name, plural, async (e) => {
