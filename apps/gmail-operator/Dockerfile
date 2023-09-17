@@ -24,7 +24,7 @@ RUN apk add --update --no-cache dumb-init
 ENV NODE_ENV production
 USER node
 WORKDIR /usr/src/
-COPY crds/*.yaml ./crds
+COPY --chown=node:node crds/*.yaml ./crds
 WORKDIR /usr/src/app
 COPY --chown=node:node --from=libraries /usr/src/app/node_modules /usr/src/app/node_modules
 
