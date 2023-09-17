@@ -19,14 +19,12 @@ WORKDIR /usr/src/app
 COPY package*.json ./
 RUN npm ci --omit=dev
 
-FROM build-base AS crds
-WORKDIR /usr/src/
-COPY crds/*.yaml ./crds
-
 FROM node:lts-alpine
 RUN apk add --update --no-cache dumb-init
 ENV NODE_ENV production
 USER node
+WORKDIR /usr/src/
+COPY crds/*.yaml ./crds
 WORKDIR /usr/src/app
 COPY --chown=node:node --from=libraries /usr/src/app/node_modules /usr/src/app/node_modules
 
