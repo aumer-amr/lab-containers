@@ -66,7 +66,7 @@ export default class GmailAddressOperator extends Operator {
                     addLabelIds: [label.id]
                 },
                 criteria: {
-                    from: object.spec.address
+                    to: object.spec.address
                 }
             }));
 
