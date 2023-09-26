@@ -1,15 +1,8 @@
-FROM golang:1.18-bullseye as INSTALL
-
-ENV CONFIG_DIR=/config
-
+FROM golang:1.18-bullseye as builder
 RUN go install github.com/mbrt/gmailctl/cmd/gmailctl@latest
 
-RUN mkdir -p /home/node/app/ && chown -R node:node /home/node/app
-RUN mv /go/bin/gmailctl /home/node/app/gmailctl
-RUN chown node:node gmailctl
-RUN gmailctl init --config $CONFIG_DIR
-
 FROM node:lts-hydrogen
+ENV CONFIG_DIR=/config
 
 RUN mkdir -p /home/node/app/ && chown -R node:node /home/node/app
 WORKDIR /home/node/app
@@ -22,6 +15,9 @@ RUN npm install && npm cache clean --force --loglevel=error
 COPY runner.js .
 
 RUN chown node:node runner.js
+
+COPY --from=builder /go/bin/gmailctl /usr/local/bin/gmailctl
+RUN gmailctl init --config $CONFIG_DIR
 
 EXPOSE 3000
 
