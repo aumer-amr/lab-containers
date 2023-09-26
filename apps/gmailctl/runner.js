@@ -81,17 +81,19 @@ const executeFilters = () => {
     exec(command.join(' '), (error, stdout, stderr) => {
         if (error) {
             logger.error(`An error occurred while reloading the config: ${error.message}`);
+            postprocessConfig(fileName);
             return;
         }
         if (stderr) {
             logger.error(`An error occurred while reloading the config: ${stderr}`);
+            postprocessConfig(fileName);
             return;
         }
         logger.info(`The config was reloaded.`);
         logger.debug(stdout);
-    });
 
-    postprocessConfig(fileName);
+        postprocessConfig(fileName);
+    });
 }
 
 const init = () => {
