@@ -115,7 +115,7 @@ const init = () => {
         logger.info(`Gmailctl was initialized`);
         logger.debug(stdout);
 
-        cron.schedule("* */15 * * * *", function () {
+        cron.schedule("*/15 * * * *", function () {
             exec(`gmailctl init --refresh-expired --config ${configDir}`, (error, stdout, stderr) => {
                 if (error) {
                     logger.error(`An error occurred while refreshing the token: ${error.message}`);
