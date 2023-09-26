@@ -22,6 +22,30 @@ const logger = pino({
     },
 });
 
+const app = stoppable(express());
+
+process.on('SIGINT', function onSigint() {
+    app.shutdown();
+});
+
+process.on('SIGTERM', function onSigterm() {
+    app.shutdown();
+});
+
+app.shutdown = function () {
+    app.stop(function onServerClosed(err) {
+        if (err) {
+            logger.error(`An error occurred while closing the server: ${err}`);
+            process.exitCode = 1;
+        }
+    });
+    process.exit();
+}
+
+app.get('/health', (res) => {
+    res.sendStatus(200);
+});
+
 const rack = hat.rack();
 
 const preprocessConfig = () => {
@@ -70,65 +94,58 @@ const executeFilters = () => {
     postprocessConfig(fileName);
 }
 
-const app = stoppable(express());
-
-process.on('SIGINT', function onSigint() {
-    app.shutdown();
-});
-
-process.on('SIGTERM', function onSigterm() {
-    app.shutdown();
-});
-
-app.shutdown = function () {
-    app.stop(function onServerClosed(err) {
-        if (err) {
-            logger.error(`An error occurred while closing the server: ${err}`);
-            process.exitCode = 1;
-        }
-    });
-    process.exit();
-}
-
-app.get('/health', (res) => {
-    res.sendStatus(200);
-});
-
-cron.schedule("* */15 * * * *", function () {
-    exec(`gmailctl init --refresh-expired --config ${configDir}`, (error, stdout, stderr) => {
+const init = () => {
+    exec(`gmailctl init --config ${configDir}`, (error, stdout, stderr) => {
         if (error) {
-            logger.error(`An error occurred while refreshing the token: ${error.message}`);
+            logger.error(`An error occurred while initializing gmailctl: ${error.message}`);
             return;
         }
         if (stderr) {
-            logger.error(`An error occurred while refreshing the token: ${stderr}`);
+            logger.error(`An error occurred while initializing gmailctl: ${stderr}`);
             return;
         }
-        logger.debug(`The token was refreshed: ${stdout}`);
-    });
-});
+        logger.info(`Gmailctl was initialized`);
+        logger.debug(stdout);
 
-chokidar.watch(`${configDir}/config.jsonnet`)
-    .on('add', () => {
-        logger.info(`Initial config push.`);
-        executeFilters();
-    })
-    .on('change', () => {
-        logger.info(`The config file was updated. Reloading...`);
-        executeFilters();
-    })
-    .on('unlink', () => {
-        logger.error(`The config file was deleted. Shutting down...`);
-        app.shutdown();
-    })
-    .on('error', () => {
-        logger.error(`An error occurred while watching the config directory: ${err}`);
-        app.shutdown();
-    })
+        cron.schedule("* */15 * * * *", function () {
+            exec(`gmailctl init --refresh-expired --config ${configDir}`, (error, stdout, stderr) => {
+                if (error) {
+                    logger.error(`An error occurred while refreshing the token: ${error.message}`);
+                    return;
+                }
+                if (stderr) {
+                    logger.error(`An error occurred while refreshing the token: ${stderr}`);
+                    return;
+                }
+                logger.debug(`The token was refreshed: ${stdout}`);
+            });
+        });
+        
+        chokidar.watch(`${configDir}/config.jsonnet`)
+            .on('add', () => {
+                logger.info(`Initial config push.`);
+                executeFilters();
+            })
+            .on('change', () => {
+                logger.info(`The config file was updated. Reloading...`);
+                executeFilters();
+            })
+            .on('unlink', () => {
+                logger.error(`The config file was deleted. Shutting down...`);
+                app.shutdown();
+            })
+            .on('error', () => {
+                logger.error(`An error occurred while watching the config directory: ${err}`);
+                app.shutdown();
+            });
+    });
+}
 
 app.listen(port, () => {
     logger.info(`Listening at :${port}`);
     if (debug) {
         logger.info('Debug mode is enabled');
     }
+
+    init();
 });
