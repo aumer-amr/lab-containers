@@ -50,7 +50,7 @@ const rack = hat.rack();
 
 const preprocessConfig = () => {
     let config = fs.readFileSync(`${configDir}/config.jsonnet`, 'utf8');
-    config = config.replace('/gmailctl\.libsonnet/', `${configDir}/gmailctl.libsonnet`);
+    config = config.replace(/gmailctl\.libsonnet/, `${configDir}/gmailctl.libsonnet`);
     config = config.replace(/labels\.json/, `${dataDir}/labels.json`);
     config = config.replace(/filters\.json/, `${dataDir}/filters.json`);
 
