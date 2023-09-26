@@ -4,12 +4,14 @@ ENV CONFIG_DIR=/config
 
 RUN go install github.com/mbrt/gmailctl/cmd/gmailctl@latest
 
-RUN mkdir /home/node/app/ && chown -R node:node /home/node/app
+RUN mkdir -p /home/node/app/ && chown -R node:node /home/node/app
 RUN mv /go/bin/gmailctl /home/node/app/gmailctl
+RUN chown node:node gmailctl
 RUN gmailctl init --config $CONFIG_DIR
 
 FROM node:lts-hydrogen
 
+RUN mkdir -p /home/node/app/ && chown -R node:node /home/node/app
 WORKDIR /home/node/app
 
 COPY package*.json ./
@@ -20,7 +22,6 @@ RUN npm install && npm cache clean --force --loglevel=error
 COPY runner.js .
 
 RUN chown node:node runner.js
-RUN chown node:node gmailctl
 
 EXPOSE 3000
 
