@@ -20,9 +20,9 @@ jobs:
           - dockerfile: ./apps/site/Dockerfile
             base: ./apps/site
             image: ghcr.io/aumer-amr/site
-          - dockerfile: ./apps/gmail-operator/Dockerfile
-            base: ./apps/gmail-operator
-            image: ghcr.io/aumer-amr/gmail-operator
+          - dockerfile: ./apps/gmailctl/Dockerfile
+            base: ./apps/gmailctl
+            image: ghcr.io/aumer-amr/gmailctl
     permissions:
       contents: read
       packages: write

@@ -6,3 +6,4 @@ coverage
 dist
 credentials.json
 npm-debug.log
+config

@@ -1,9 +1,0 @@
----
-apiVersion: aumer.dev/v1alpha1
-kind: GmailAddress
-metadata:
-  name: test-gmail-address
-  namespace: default
-spec:
-  address: test@example.tld
-  parentLabel: 'k8s'
