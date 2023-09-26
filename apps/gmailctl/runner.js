@@ -10,7 +10,7 @@ const hat = require('hat');
 
 const port = process.env.PORT || 3000;
 const debug = process.env.DEBUG || false;
-const tmpDir = process.env.TEMP_DIRECTORY || '/tmp';
+const tmpDir = process.env.TEMP_DIRECTORY || './tmp';
 const allowLabelDeletion = process.env.ALLOW_LABEL_DELETION || false;
 const configDir = process.env.CONFIG_DIR || './config';
 const dataDir = process.env.DATA_DIR || './data';
@@ -104,6 +104,13 @@ const init = () => {
             logger.error(`An error occurred while initializing gmailctl: ${stderr}`);
             return;
         }
+
+        if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir);
+
+        if (!fs.existsSync(dataDir)) {
+            throw new Error(`The data directory does not exist: ${dataDir}`);
+        }
+
         logger.info(`Gmailctl was initialized`);
         logger.debug(stdout);
 
