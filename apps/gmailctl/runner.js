@@ -49,9 +49,9 @@ app.get('/health', (res) => {
 const rack = hat.rack();
 
 const preprocessConfig = () => {
-    const config = fs.readFileSync(`${configDir}/config.jsonnet`, 'utf8');
-    config.replace('labels.json', `${dataDir}/labels.json`);
-    config.replace('filters.json', `${dataDir}/filters.json`);
+    let config = fs.readFileSync(`${configDir}/config.jsonnet`, 'utf8');
+    config = config.replace(/labels\.json/, `${dataDir}/labels.json`);
+    config = config.replace(/filters\.json/, `${dataDir}/filters.json`);
 
     const fileName = `${rack()}.config.jsonnet`;
     fs.writeFileSync(`${tmpDir}/${fileName}`, config);
