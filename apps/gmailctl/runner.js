@@ -60,7 +60,7 @@ if (!fs.existsSync(collectionDir)) fs.mkdirSync(collectionDir);
 
 const preprocessConfig = () => {
     let config = fs.readFileSync(`${collectionDir}/config.jsonnet`, 'utf8');
-    config = config.replace(/<config>/, configDir);
+    config = config.replace(/<config>/, collectionDir);
 
     const fileName = `${rack()}.config.jsonnet`;
     fs.writeFileSync(`${tmpDir}/${fileName}`, config);
@@ -140,6 +140,7 @@ const init = () => {
     logger.info(`Config sync is started`);
 
     fs.readdirSync(configDir).forEach(file => {
+        if (file == "." || file == ".." || file.includes("..")) return;
         fs.copyFileSync(path.join(configDir, file), path.join(collectionDir, file));
     });
 
