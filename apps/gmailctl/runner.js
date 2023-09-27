@@ -140,8 +140,7 @@ const init = () => {
 
             chokidar.watch(dataDir, {
                 usePolling: usePolling,
-                ignored: /(^|[\/\\])\../,
-                persistent: true
+                ignored: /(^|[\/\\])\../
             })
             .on('add', (filePath, stats) => {
                 logger.debug(`File ${filePath} has been added`);
@@ -162,8 +161,7 @@ const init = () => {
         }
         
         chokidar.watch(`${config}/config.jsonnet`, {
-            usePolling: usePolling,
-            persistent: true
+            usePolling: usePolling
         })
         .on('add', () => {
             logger.info(`Initial config push.`);
