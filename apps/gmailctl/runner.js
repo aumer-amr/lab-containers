@@ -55,9 +55,11 @@ app.get('/sync', (res) => {
 });
 
 const rack = hat.rack();
+const collectionDir = path.join(__dirname, 'collection');
+if (!fs.existsSync(collectionDir)) fs.mkdirSync(collectionDir);
 
 const preprocessConfig = () => {
-    let config = fs.readFileSync(`${configDir}/config.jsonnet`, 'utf8');
+    let config = fs.readFileSync(`${collectionDir}/config.jsonnet`, 'utf8');
     config = config.replace(/<config>/, configDir);
 
     const fileName = `${rack()}.config.jsonnet`;
@@ -77,7 +79,7 @@ const executeFilters = () => {
         'gmailctl',
         'apply',
         '--config',
-        configDir,
+        collectionDir,
         '--yes',
         '--filename',
         `${tmpDir}/${fileName}`
@@ -107,10 +109,10 @@ const init = () => {
             throw new Error(`The data directory does not exist: ${dataDir}`);
         }
 
-        logger.info(`Data sync is enabled`);
+        logger.info(`Data DIR sync is enabled`);
 
         fs.readdirSync(dataDir).forEach(file => {
-            fs.copyFileSync(path.join(dataDir, file), path.join(configDir, file));
+            fs.copyFileSync(path.join(dataDir, file), path.join(collectionDir, file));
         });
 
         chokidar.watch(dataDir, {
@@ -119,15 +121,15 @@ const init = () => {
         })
         .on('add', (filePath, stats) => {
             logger.debug(`File ${filePath} has been added`);
-            stats.isFile() && fs.copyFileSync(filePath, path.join(configDir, path.basename(filePath)));
+            stats.isFile() && fs.copyFileSync(filePath, path.join(collectionDir, path.basename(filePath)));
         })
         .on('change', () => {
             logger.debug(`File ${filePath} has been changed`);
-            stats.isFile() && fs.copyFileSync(filePath, path.join(configDir, path.basename(filePath)));
+            stats.isFile() && fs.copyFileSync(filePath, path.join(collectionDir, path.basename(filePath)));
         })
         .on('unlink', () => {
             logger.debug(`File ${filePath} has been removed`);
-            stats.isFile() && fs.unlinkSync(path.join(configDir, path.basename(filePath)));
+            stats.isFile() && fs.unlinkSync(path.join(collectionDir, path.basename(filePath)));
         })
         .on('error', (err) => {
             logger.error(`An error occurred while watching the data directory: ${err}`);
@@ -135,7 +137,34 @@ const init = () => {
         });
     }
 
-    exec(`gmailctl init --config ${configDir}`, (error, stdout, stderr) => {
+    logger.info(`Config sync is started`);
+
+    fs.readdirSync(configDir).forEach(file => {
+        fs.copyFileSync(path.join(configDir, file), path.join(collectionDir, file));
+    });
+
+    chokidar.watch(configDir, {
+        usePolling: usePolling,
+        ignored: /(^|[\/\\])\../
+    })
+    .on('add', (filePath, stats) => {
+        logger.debug(`File ${filePath} has been added`);
+        stats.isFile() && fs.copyFileSync(filePath, path.join(collectionDir, path.basename(filePath)));
+    })
+    .on('change', () => {
+        logger.debug(`File ${filePath} has been changed`);
+        stats.isFile() && fs.copyFileSync(filePath, path.join(collectionDir, path.basename(filePath)));
+    })
+    .on('unlink', () => {
+        logger.debug(`File ${filePath} has been removed`);
+        stats.isFile() && fs.unlinkSync(path.join(collectionDir, path.basename(filePath)));
+    })
+    .on('error', (err) => {
+        logger.error(`An error occurred while watching the data directory: ${err}`);
+        app.shutdown();
+    });
+
+    exec(`gmailctl init --config ${collectionDir}`, (error, stdout, stderr) => {
         if (error) {
             logger.error(`An error occurred while initializing gmailctl: ${error.message}`);
             return;
@@ -151,7 +180,7 @@ const init = () => {
         logger.debug(stdout);
 
         cron.schedule("*/15 * * * *", function () {
-            exec(`gmailctl init --refresh-expired --config ${configDir}`, (error, stdout, stderr) => {
+            exec(`gmailctl init --refresh-expired --config ${collectionDir}`, (error, stdout, stderr) => {
                 if (error) {
                     logger.error(`An error occurred while refreshing the token: ${error.message}`);
                     return;
@@ -164,7 +193,7 @@ const init = () => {
             });
         });
         
-        chokidar.watch(`${config}/config.jsonnet`, {
+        chokidar.watch(`${collectionDir}/config.jsonnet`, {
             usePolling: usePolling
         })
         .on('add', () => {
