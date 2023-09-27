@@ -102,6 +102,39 @@ const executeFilters = () => {
 }
 
 const init = () => {
+    if (useDataSync && dataDir !== '') {
+        if (!fs.existsSync(dataDir)) {
+            throw new Error(`The data directory does not exist: ${dataDir}`);
+        }
+
+        logger.info(`Data sync is enabled`);
+
+        fs.readdirSync(dataDir).forEach(file => {
+            fs.copyFileSync(path.join(dataDir, file), path.join(configDir, file));
+        });
+
+        chokidar.watch(dataDir, {
+            usePolling: usePolling,
+            ignored: /(^|[\/\\])\../
+        })
+        .on('add', (filePath, stats) => {
+            logger.debug(`File ${filePath} has been added`);
+            stats.isFile() && fs.copyFileSync(filePath, path.join(configDir, path.basename(filePath)));
+        })
+        .on('change', () => {
+            logger.debug(`File ${filePath} has been changed`);
+            stats.isFile() && fs.copyFileSync(filePath, path.join(configDir, path.basename(filePath)));
+        })
+        .on('unlink', () => {
+            logger.debug(`File ${filePath} has been removed`);
+            stats.isFile() && fs.unlinkSync(path.join(configDir, path.basename(filePath)));
+        })
+        .on('error', (err) => {
+            logger.error(`An error occurred while watching the data directory: ${err}`);
+            app.shutdown();
+        });
+    }
+
     exec(`gmailctl init --config ${configDir}`, (error, stdout, stderr) => {
         if (error) {
             logger.error(`An error occurred while initializing gmailctl: ${error.message}`);
@@ -130,35 +163,6 @@ const init = () => {
                 logger.debug(`The token was refreshed: ${stdout}`);
             });
         });
-        
-        if (useDataSync && dataDir !== '') {
-            if (!fs.existsSync(dataDir)) {
-                throw new Error(`The data directory does not exist: ${dataDir}`);
-            }
-
-            logger.info(`Data sync is enabled`);
-
-            chokidar.watch(dataDir, {
-                usePolling: usePolling,
-                ignored: /(^|[\/\\])\../
-            })
-            .on('add', (filePath, stats) => {
-                logger.debug(`File ${filePath} has been added`);
-                stats.isFile() && fs.copyFileSync(filePath, path.join(configDir, path.basename(filePath)));
-            })
-            .on('change', () => {
-                logger.debug(`File ${filePath} has been changed`);
-                stats.isFile() && fs.copyFileSync(filePath, path.join(configDir, path.basename(filePath)));
-            })
-            .on('unlink', () => {
-                logger.debug(`File ${filePath} has been removed`);
-                stats.isFile() && fs.unlinkSync(path.join(configDir, path.basename(filePath)));
-            })
-            .on('error', (err) => {
-                logger.error(`An error occurred while watching the data directory: ${err}`);
-                app.shutdown();
-            });
-        }
         
         chokidar.watch(`${config}/config.jsonnet`, {
             usePolling: usePolling
