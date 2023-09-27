@@ -124,11 +124,11 @@ const init = () => {
             logger.debug(`File ${filePath} has been added`);
             stats.isFile() && fs.copyFileSync(filePath, path.join(collectionDir, path.basename(filePath)));
         })
-        .on('change', () => {
+        .on('change', (filePath, stats) => {
             logger.debug(`File ${filePath} has been changed`);
             stats.isFile() && fs.copyFileSync(filePath, path.join(collectionDir, path.basename(filePath)));
         })
-        .on('unlink', () => {
+        .on('unlink', (filePath, stats) => {
             logger.debug(`File ${filePath} has been removed`);
             stats.isFile() && fs.unlinkSync(path.join(collectionDir, path.basename(filePath)));
         })
@@ -153,11 +153,11 @@ const init = () => {
         logger.debug(`File ${filePath} has been added`);
         stats.isFile() && fs.copyFileSync(filePath, path.join(collectionDir, path.basename(filePath)));
     })
-    .on('change', () => {
+    .on('change', (filePath, stats) => {
         logger.debug(`File ${filePath} has been changed`);
         stats.isFile() && fs.copyFileSync(filePath, path.join(collectionDir, path.basename(filePath)));
     })
-    .on('unlink', () => {
+    .on('unlink', (filePath, stats) => {
         logger.debug(`File ${filePath} has been removed`);
         stats.isFile() && fs.unlinkSync(path.join(collectionDir, path.basename(filePath)));
     })
