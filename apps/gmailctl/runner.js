@@ -112,6 +112,7 @@ const init = () => {
         logger.info(`Data DIR sync is enabled`);
 
         fs.readdirSync(dataDir).forEach(file => {
+            if (file == "." || file == ".." || file.includes("..")) return;
             fs.copyFileSync(path.join(dataDir, file), path.join(collectionDir, file));
         });
 
