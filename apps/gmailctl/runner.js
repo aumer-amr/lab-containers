@@ -60,7 +60,7 @@ if (!fs.existsSync(collectionDir)) fs.mkdirSync(collectionDir);
 
 const preprocessConfig = () => {
     let config = fs.readFileSync(`${collectionDir}/config.jsonnet`, 'utf8');
-    config = config.replace(/<config>/, collectionDir);
+    config = config.replace(/<config>/gm, collectionDir);
 
     const fileName = `${rack()}.config.jsonnet`;
     fs.writeFileSync(`${tmpDir}/${fileName}`, config);
