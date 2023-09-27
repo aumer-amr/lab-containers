@@ -45,11 +45,11 @@ app.shutdown = function () {
     process.exit();
 }
 
-app.get('/health', (res) => {
+app.get('/health', (_, res) => {
     res.sendStatus(200);
 });
 
-app.get('/sync', (res) => {
+app.get('/sync', (_, res) => {
     executeFilters();
     res.sendStatus(200);
 });
@@ -130,7 +130,7 @@ const init = () => {
         })
         .on('unlink', (filePath, stats) => {
             logger.debug(`File ${filePath} has been removed`);
-            stats.isFile() && fs.unlinkSync(path.join(collectionDir, path.basename(filePath)));
+            fs.unlinkSync(path.join(collectionDir, path.basename(filePath)));
         })
         .on('error', (err) => {
             logger.error(`An error occurred while watching the data directory: ${err}`);
@@ -159,7 +159,7 @@ const init = () => {
     })
     .on('unlink', (filePath, stats) => {
         logger.debug(`File ${filePath} has been removed`);
-        stats.isFile() && fs.unlinkSync(path.join(collectionDir, path.basename(filePath)));
+        fs.unlinkSync(path.join(collectionDir, path.basename(filePath)));
     })
     .on('error', (err) => {
         logger.error(`An error occurred while watching the data directory: ${err}`);
