@@ -14,6 +14,7 @@ const tmpDir = process.env.TEMP_DIRECTORY || './tmp';
 const allowLabelDeletion = process.env.ALLOW_LABEL_DELETION || false;
 const configDir = process.env.CONFIG_DIR || './config';
 const dataDir = process.env.DATA_DIR || './data';
+const usePolling = process.env.USE_POLLING || false;
 
 const logger = pino({
     level: debug ? 'debug' : 'info',
@@ -46,13 +47,17 @@ app.get('/health', (res) => {
     res.sendStatus(200);
 });
 
+app.get('/sync', (res) => {
+    executeFilters();
+    res.sendStatus(200);
+});
+
 const rack = hat.rack();
 
 const preprocessConfig = () => {
-    let config = fs.readFileSync(`${configDir}/config.jsonnet`, 'utf8');
-    config = config.replace(/gmailctl\.libsonnet/, `${configDir}/gmailctl.libsonnet`);
-    config = config.replace(/labels\.json/, `${dataDir}/labels.json`);
-    config = config.replace(/filters\.json/, `${dataDir}/filters.json`);
+    let config = fs.readFileSync(`${dataDir}/config.jsonnet`, 'utf8');
+    config = config.replace(/<data>/, dataDir);
+    config = config.replace(/<config>/, configDir);
 
     const fileName = `${rack()}.config.jsonnet`;
     fs.writeFileSync(`${tmpDir}/${fileName}`, config);
@@ -129,7 +134,9 @@ const init = () => {
             });
         });
         
-        chokidar.watch(`${configDir}/config.jsonnet`)
+        chokidar.watch(`${dataDir}/config.jsonnet`, {
+                usePolling: usePolling,
+            })
             .on('add', () => {
                 logger.info(`Initial config push.`);
                 executeFilters();
