@@ -51,6 +51,7 @@ app.get('/health', (req, res, next) => {
 app.use('/favicon.png', (_, res) => res.sendFile(path.join(__dirname, 'assets/favicon.png')));
 app.use('/logo.png', (_, res) => res.sendFile(path.join(__dirname, 'assets/logo.png')));
 app.use('/style.css', (_, res) => res.sendFile(path.join(__dirname, 'assets/style.css')));
+app.use('/robots.txt', (_, res) => res.sendFile(path.join(__dirname, 'assets/robots.txt')));
 app.use('/', (_, res) => res.sendFile(path.join(__dirname, 'assets/index.html')));
 
 app.listen(port, () => {
