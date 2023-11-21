@@ -10,11 +10,11 @@ RUN apk add \
 FROM debian:bookworm-slim
 ENV GIN_MODE=release
 
-RUN add-apt-repository ppa:unit193/encryption -y
+RUN wget https://launchpad.net/veracrypt/trunk/1.25.9/+download/veracrypt-1.25.9-Debian-11-amd64.deb
 
 RUN apt-get update --no-install-recommends && \
     apt-get autoclean && \
-    apt-get install veracrypt -y
+    apt install ./veracrypt-1.25.9-Debian-11-amd64.deb -y
 
 WORKDIR /usr/local/bin
 RUN apt update && apt install -y curl unzip libsecret-1-0 jq
