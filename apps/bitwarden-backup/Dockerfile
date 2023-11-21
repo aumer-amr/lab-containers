@@ -10,17 +10,11 @@ RUN apk add \
 FROM debian:bookworm-slim
 ENV GIN_MODE=release
 
-COPY deb/veracrypt-console-1.25.9-Debian-12-amd64.deb /opt/veracrypt.deb
-COPY deb/VeraCrypt_PGP_public_key.asc /opt/veracrypt.sig
+RUN add-apt-repository ppa:unit193/encryption -y
 
 RUN apt-get update --no-install-recommends && \
     apt-get autoclean && \
-    apt-get install gnupg --yes && \
-    apt-get install nano --yes
-
-RUN gpg --dearmor /opt/veracrypt.sig && \
-    apt-key add /opt/veracrypt.sig && \
-    apt install /opt/veracrypt.deb --yes
+    apt-get install veracrypt -y
 
 WORKDIR /usr/local/bin
 RUN apt update && apt install -y curl unzip libsecret-1-0 jq
