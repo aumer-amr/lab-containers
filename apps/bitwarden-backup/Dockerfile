@@ -10,7 +10,7 @@ RUN apk add \
 FROM debian:bookworm-slim
 ENV GIN_MODE=release
 
-RUN wget https://launchpad.net/veracrypt/trunk/1.25.9/+download/veracrypt-1.25.9-Debian-11-amd64.deb
+RUN wget https://launchpad.net/veracrypt/trunk/1.25.9/+download/veracrypt-console-1.25.9-Debian-11-amd64.deb
 
 RUN apt-get update --no-install-recommends && \
     apt-get autoclean && \
