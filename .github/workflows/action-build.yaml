@@ -23,6 +23,9 @@ jobs:
           - dockerfile: ./apps/gmailctl/Dockerfile
             base: ./apps/gmailctl
             image: ghcr.io/aumer-amr/gmailctl
+          - dockerfile: ./apps/bitwarden-backup/Dockerfile
+            base: ./apps/bitwarden-backup
+            image: ghcr.io/aumer-amr/bitwarden-backup
     permissions:
       contents: read
       packages: write
