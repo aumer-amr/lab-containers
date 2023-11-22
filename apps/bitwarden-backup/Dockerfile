@@ -28,4 +28,6 @@ COPY --from=go-build /bitwarden-backup /usr/local/bin
 
 RUN chmod +x /usr/local/bin/bitwarden-backup
 
-CMD ["bitwarden-backup"]
+RUN mkdir -p /.config/Bitwarden\ CLI
+
+ENTRYPOINT ["tail", "-f", "/dev/null"]
