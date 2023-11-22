@@ -39,7 +39,7 @@ func (b *BWBackup) Backup() {
 	bitwarden.UnlockVault()
 	bitwarden.Export()
 
-	size := GetFileSize(bitwarden.GetExportFile())
+	size := GetFileSize(bitwarden.GetExportPath() + "/" + bitwarden.GetExportFile())
 
 	veracrypt := NewVeracrypt(&b.config)
 	veracrypt.Prepare()

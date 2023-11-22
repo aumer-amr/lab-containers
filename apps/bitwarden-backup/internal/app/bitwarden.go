@@ -14,6 +14,7 @@ type Bitwarden struct {
 
 const (
 	EXPORTFILE string = "bitwarden_export.json"
+	EXPORTPATH string = "/home/kah/"
 )
 
 func NewBitwarden(config *BWBackupConfig) *Bitwarden {
@@ -24,6 +25,10 @@ func NewBitwarden(config *BWBackupConfig) *Bitwarden {
 
 func (b *Bitwarden) GetExportFile() string {
 	return EXPORTFILE
+}
+
+func (b *Bitwarden) GetExportPath() string {
+	return EXPORTPATH
 }
 
 func (b *Bitwarden) SetServer(host string) {
@@ -41,7 +46,7 @@ func (b *Bitwarden) SetServer(host string) {
 func (b *Bitwarden) StoreExport(path string) (error) {
 	log.Info().Msg("Storing Bitwarden Export")
 
-	err := MoveFile(EXPORTFILE, path)
+	err := MoveFile(EXPORTPATH + "/" + EXPORTFILE, path)
 	if err != nil {
 		log.Error().Msgf("Failed to move export: %s", err)
 		b.DeleteExport()
@@ -54,13 +59,13 @@ func (b *Bitwarden) StoreExport(path string) (error) {
 func (b *Bitwarden) DeleteExport() {
 	log.Info().Msg("Deleting Bitwarden Export")
 
-	DeleteFile(EXPORTFILE)
+	DeleteFile(EXPORTPATH + "/" + EXPORTFILE)
 }
 
 func (b *Bitwarden) Export() {
 	log.Info().Msg("Exporting Bitwarden Vault")
 
-	err, stdout := b.ExecuteBWCommand("export", "--output", EXPORTFILE, "--format", "encrypted_json", "--password", b.config.GetBWPassword())
+	err, stdout := b.ExecuteBWCommand("export", "--output", EXPORTPATH + "/" + EXPORTFILE, "--format", "encrypted_json", "--password", b.config.GetBWPassword())
 	if err != nil {
 		log.Error().Msgf("Failed to export vault: %s", stdout)
 		b.Logout()
