@@ -27,6 +27,8 @@ RUN export VER=$(curl -H "Accept: application/vnd.github+json" https://api.githu
 curl -LO "https://github.com/bitwarden/clients/releases/download/cli-v{$VER}/bw-linux-{$VER}.zip" \
 && unzip *.zip && chmod +x ./bw && rm *.zip
 
-COPY --from=go-build /bitwarden-backup /
+COPY --from=go-build /bitwarden-backup ./
 
-CMD ["/bitwarden-backup"]
+RUN chmod +x ./bitwarden-backup
+
+CMD ["./bitwarden-backup"]
