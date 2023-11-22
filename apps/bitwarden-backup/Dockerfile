@@ -29,5 +29,7 @@ COPY --from=go-build /bitwarden-backup /usr/local/bin
 RUN chmod +x /usr/local/bin/bitwarden-backup
 
 RUN mkdir -p /.config/Bitwarden\ CLI
+RUN touch /.config/Bitwarden\ CLI/data.json
+RUN chmod 777 /.config/Bitwarden\ CLI/data.json
 
 CMD ["bitwarden-backup"]
