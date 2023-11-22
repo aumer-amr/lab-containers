@@ -30,4 +30,4 @@ RUN chmod +x /usr/local/bin/bitwarden-backup
 
 RUN mkdir -p /.config/Bitwarden\ CLI
 
-ENTRYPOINT ["tail", "-f", "/dev/null"]
+CMD ["bitwarden-backup"]
