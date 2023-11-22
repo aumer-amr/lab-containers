@@ -1,11 +1,8 @@
-FROM golang:1.21-alpine as go-build
+FROM golang:1.21-bookworm as go-build
 WORKDIR /
 COPY . ./
 
-RUN apk add \
-    build-base \
-    git \
-&&  go build -ldflags="-s -w"
+RUN go build -ldflags="-s -w"
 
 FROM debian:bookworm-slim
 ENV GIN_MODE=release
@@ -31,4 +28,4 @@ COPY --from=go-build /bitwarden-backup /usr/local/bin
 
 RUN chmod +x /usr/local/bin/bitwarden-backup
 
-CMD ["/usr/local/bin/bitwarden-backup"]
+CMD ["bitwarden-backup"]
