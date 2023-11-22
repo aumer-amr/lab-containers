@@ -36,23 +36,20 @@ func (b *BWBackup) Backup() {
 
     bitwarden.SetServer(b.config.GetBWHost())
 	bitwarden.Login()
-	err, _ := bitwarden.UnlockVault()
+	bitwarden.UnlockVault()
+	bitwarden.Export()
 
-	if err == nil {
-		bitwarden.Export()
+	size := GetFileSize(bitwarden.GetExportFile())
 
-		size := GetFileSize(bitwarden.GetExportFile())
+	veracrypt := NewVeracrypt(&b.config)
+	veracrypt.Prepare()
+	veracrypt.Create(size)
+	veracrypt.Mount()
 
-		veracrypt := NewVeracrypt(&b.config)
-		veracrypt.Prepare()
-		veracrypt.Create(size)
-		veracrypt.Mount()
+	bitwarden.StoreExport(veracrypt.GetMountPath() + "/" + bitwarden.GetExportFile())
 
-		bitwarden.StoreExport(veracrypt.GetMountPath() + "/" + bitwarden.GetExportFile())
-
-		veracrypt.Unmount()
-	}
-
+	veracrypt.Unmount()
 	bitwarden.DeleteExport()
+
 	bitwarden.Logout()
 }

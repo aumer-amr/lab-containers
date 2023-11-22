@@ -32,6 +32,7 @@ func (b *Bitwarden) SetServer(host string) {
 	err, stdout := b.ExecuteBWCommand("config", "server", host)
 	if err != nil {
 		log.Error().Msgf("Failed to set server: %s", stdout)
+		os.Exit(1)
 	} else {
 		log.Info().Msg(stdout)
 	}
@@ -44,6 +45,8 @@ func (b *Bitwarden) StoreExport(path string) (error) {
 	if err != nil {
 		log.Error().Msgf("Failed to move export: %s", err)
 		b.DeleteExport()
+		b.Logout()
+		os.Exit(1)
 	}
 	return err
 }
@@ -60,6 +63,8 @@ func (b *Bitwarden) Export() {
 	err, stdout := b.ExecuteBWCommand("export", "--output", EXPORTFILE, "--format", "encrypted_json", "--password", b.config.GetBWPassword())
 	if err != nil {
 		log.Error().Msgf("Failed to export vault: %s", stdout)
+		b.Logout()
+		os.Exit(1)
 	} else {
 		log.Info().Msg(stdout)
 	}
@@ -71,6 +76,7 @@ func (b *Bitwarden) Logout() {
 	err, stdout := b.ExecuteBWCommand("logout")
 	if err != nil {
 		log.Error().Msgf("Failed to logout: %s", stdout)
+		os.Exit(1)
 	} else {
 		log.Info().Msg(stdout)
 	}
@@ -83,6 +89,7 @@ func (b *Bitwarden) Login() (error, string) {
 	if err != nil {
 		if strings.Contains(stdout, "You are already logged in as") == false {
 			log.Error().Msgf("Failed to login: %s", stdout)
+			os.Exit(1)
 		} else {
 			log.Warn().Msg("Already logged in")
 		}
@@ -98,6 +105,7 @@ func (b *Bitwarden) UnlockVault() (error, string) {
 
 	if err != nil {
 		log.Error().Msgf("Failed to unlock vault: %s", stdout)
+		os.Exit(1)
 	} else {
 		log.Info().Msg(stdout)
 	}
