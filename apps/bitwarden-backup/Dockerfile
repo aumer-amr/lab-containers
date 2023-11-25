@@ -38,4 +38,4 @@ RUN mkdir -p /.config \
     && chown -R root:root /.config \
     && chmod -R 775 /.config
 
-ENTRYPOINT ["tail", "-f", "/dev/null"]
+CMD ["bitwarden-backup"]
