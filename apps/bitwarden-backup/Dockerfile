@@ -43,7 +43,8 @@ RUN \
     && \
     mkdir -p /home/kah/.config \
     && chown -R kah:kah /home/kah/.config \
-    && chmod -R 775 /home/kah/.config
+    && chmod -R 775 /home/kah/.config \
+    && echo "kah ALL=(ALL) NOPASSWD:veracrypt" > /etc/sudoers.d/kah
 
 USER kah
 
