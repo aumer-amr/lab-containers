@@ -6,6 +6,7 @@ type BWBackupConfig struct {
 	BW_HOST		 	string	`default:"https://vault.bitwarden.com" env:"BW_HOST"`
 	BW_Password	 	string	`default:"" env:"BW_PASSWORD"`
 	VC_Password		string	`default:"" env:"VC_PASSWORD"`
+	USE_VC			bool	`default:"false" env:"USE_VC"`
 	DEBUG			bool	`default:"false" env:"DEBUG"`
 }
 
@@ -31,4 +32,8 @@ func (c *BWBackupConfig) GetVCPassword() string {
 
 func (c *BWBackupConfig) GetDebug() bool {
 	return c.DEBUG
+}
+
+func (c *BWBackupConfig) GetUseVC() bool {
+	return c.USE_VC
 }

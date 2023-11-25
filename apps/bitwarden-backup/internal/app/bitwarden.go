@@ -14,7 +14,7 @@ type Bitwarden struct {
 
 const (
 	EXPORTFILE string = "bitwarden_export.json"
-	EXPORTPATH string = "/home/kah/"
+	EXPORTPATH string = "/backup"
 )
 
 func NewBitwarden(config *BWBackupConfig) *Bitwarden {
