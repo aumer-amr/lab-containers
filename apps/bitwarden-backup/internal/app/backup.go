@@ -51,7 +51,7 @@ func (b *BWBackup) Backup() {
 
 		veracrypt.Unmount()
 	} else {
-		bitwarden.StoreExport(bitwarden.GetExportPath() + "/" + bitwarden.GetExportFile())
+		bitwarden.StoreExport(bitwarden.GetExportPath() + "/novc-" + bitwarden.GetExportFile())
 	}
 
 	bitwarden.DeleteExport()
