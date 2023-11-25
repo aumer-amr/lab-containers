@@ -33,19 +33,8 @@ COPY --from=go-build /bitwarden-backup /usr/local/bin
 
 RUN chmod +x /usr/local/bin/bitwarden-backup
 
-RUN \
-    adduser kah \
-        --uid 568 \
-        --group \
-        --system \
-        --disabled-password \
-        --home /home/kah \
-    && \
-    mkdir -p /home/kah/.config \
-    && chown -R kah:kah /home/kah/.config \
-    && chmod -R 775 /home/kah/.config \
-    && echo "kah ALL=(ALL) NOPASSWD:veracrypt" > /etc/sudoers.d/kah
-
-USER kah
+RUN mkdir -p /.config \
+    && chown -R root:root /.config \
+    && chmod -R 775 /.config
 
 CMD ["bitwarden-backup"]
