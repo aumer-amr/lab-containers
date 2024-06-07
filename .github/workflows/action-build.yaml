@@ -26,6 +26,9 @@ jobs:
           - dockerfile: ./apps/bitwarden-backup/Dockerfile
             base: ./apps/bitwarden-backup
             image: ghcr.io/aumer-amr/bitwarden-backup
+          - dockerfile: ./apps/pokemon/Dockerfile
+            base: ./apps/pokemon
+            image: ghcr.io/aumer-amr/pokemon
     permissions:
       contents: read
       packages: write

@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @keyframes progress {
+            0% { width: 0; }
+            100% { width: 100%; }
+        }
+        .progress-bar {
+            width: 100%;
+            background-color: #3b82f6;
+            height: 10px;
+            border-radius: 9999px;
+            animation: progress 2s linear infinite;
+        }
+        .result-card {
+            background-color: #2d2d2d; /* Darker background for cards */
+            color: white;
+            min-height: 500px;
+            width: 400px;
+            display: flex;
+            flex-direction: column;
+            margin-bottom: 1rem; /* Separation between cards */
+            padding: 1rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            word-wrap: break-word; /* Ensure text wraps */
+        }
+        .result-card img {
+            width: 125px;
+            height: 125px;
+        }
+        .result-card h2 {
+            font-size: 1.25rem;
+            font-weight: 700;
+        }
+        .result-card p {
+            font-weight: 700;
+        }
+        .result-card .content {
+            flex-grow: 1;
+        }
+        .result-card ul li span {
+            font-weight: 700;
+        }
+        .type-badge {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.5rem;
+            color: white;
+            font-weight: bold;
+            margin: 0.1rem;
+        }
+        .type-normal { background-color: #A8A77A; }
+        .type-fire { background-color: #EE8130; }
+        .type-water { background-color: #6390F0; }
+        .type-electric { background-color: #F7D02C; }
+        .type-grass { background-color: #7AC74C; }
+        .type-ice { background-color: #96D9D6; }
+        .type-fighting { background-color: #C22E28; }
+        .type-poison { background-color: #A33EA1; }
+        .type-ground { background-color: #E2BF65; }
+        .type-flying { background-color: #A98FF3; }
+        .type-psychic { background-color: #F95587; }
+        .type-bug { background-color: #A6B91A; }
+        .type-rock { background-color: #B6A136; }
+        .type-ghost { background-color: #735797; }
+        .type-dragon { background-color: #6F35FC; }
+        .type-dark { background-color: #705746; }
+        .type-steel { background-color: #C0C0C0; } /* Lighter silver */
+        .type-fairy { background-color: #D685AD; }
+        .type-none { background-color: #000000; } /* Black for None */
+        .effectiveness-row {
+            padding: 0.5rem 0;
+            display: flex;
+            align-items: flex-start;
+            flex-wrap: wrap; /* Ensure badges wrap */
+        }
+        .effectiveness-label {
+            width: 100px;
+            font-weight: bold;
+        }
+        .effectiveness-content {
+            flex: 1;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+        .separator {
+            border-top: 1px solid #444;
+            margin: 0.5rem 0;
+        }
+        .input-field::placeholder {
+            color: #a0aec0; /* Grayish color for placeholder */
+        }
+        .input-field {
+            color: black; /* Black color for typed text */
+            background-color: white;
+        }
+        .watermark {
+            position: absolute;
+            top: 0;
+            left: 0;
+            margin: 1rem;
+            font-size: 0.75rem;
+            color: #a0aec0;
+        }
+    </style>
+    <title>Pokémon Type Effectiveness</title>
+    <script>
+        async function fetchPokemon(pokemonName = null) {
+            if (!pokemonName) {
+                pokemonName = document.getElementById('pokemon-name').value.toLowerCase();
+            }
+
+            const progressBarContainer = document.getElementById('progress-bar-container');
+            progressBarContainer.classList.remove('hidden');
+
+            const response = await fetch(`/api/pokemon?name=${pokemonName}`);
+            const data = await response.json();
+
+            const errorMessageDiv = document.getElementById('error-message');
+            const resultsDiv = document.getElementById('results');
+            errorMessageDiv.innerHTML = '';
+            resultsDiv.innerHTML = '';
+
+            if (response.ok) {
+                if (data.length <= 3) {
+                    resultsDiv.className = "flex flex-wrap justify-center gap-4";
+                } else {
+                    resultsDiv.className = "grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4";
+                }
+
+                data.forEach(result => {
+                    const formDiv = document.createElement('div');
+                    formDiv.className = "bg-white dark:bg-zinc-700 rounded-lg p-4 shadow-md result-card";
+                    formDiv.innerHTML = `
+                        <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${result.id}.png" alt="${result.form}" class="mx-auto mb-2">
+                        <h2 class="text-center mb-2">${capitalizeFirstLetter(result.name)}</h2>
+                        <p class="text-center"><span>Type:</span> ${result.types.map(type => `<span class="type-badge type-${type.toLowerCase()}">${capitalizeFirstLetter(type)}</span>`).join(' ')}</p>
+                        <div class="content mt-2">
+                            <p><br></p>
+                            <div class="effectiveness-row"><span class="effectiveness-label">4x Weak:</span> <div class="effectiveness-content">${(result.effectiveness.four_times_effective.length > 0 ? result.effectiveness.four_times_effective : ['None']).sort().map(type => `<span class="type-badge type-${type.toLowerCase()}">${capitalizeFirstLetter(type)}</span>`).join(' ')}</div></div>
+                            <div class="separator"></div>
+                            <div class="effectiveness-row"><span class="effectiveness-label">2x Weak:</span> <div class="effectiveness-content">${(result.effectiveness.super_effective.length > 0 ? result.effectiveness.super_effective : ['None']).sort().map(type => `<span class="type-badge type-${type.toLowerCase()}">${capitalizeFirstLetter(type)}</span>`).join(' ')}</div></div>
+                            <div class="separator"></div>
+                            <div class="effectiveness-row"><span class="effectiveness-label">Normal:</span> <div class="effectiveness-content">${(result.effectiveness.normal_effective.length > 0 ? result.effectiveness.normal_effective : ['None']).sort().map(type => `<span class="type-badge type-${type.toLowerCase()}">${capitalizeFirstLetter(type)}</span>`).join(' ')}</div></div>
+                            <div class="separator"></div>
+                            <div class="effectiveness-row"><span class="effectiveness-label">Resistant:</span> <div class="effectiveness-content">${(result.effectiveness.not_very_effective.length > 0 ? result.effectiveness.not_very_effective : ['None']).sort().map(type => `<span class="type-badge type-${type.toLowerCase()}">${capitalizeFirstLetter(type)}</span>`).join(' ')}</div></div>
+                            <div class="separator"></div>
+                            <div class="effectiveness-row"><span class="effectiveness-label">Immune:</span> <div class="effectiveness-content">${(result.effectiveness.immune.length > 0 ? result.effectiveness.immune : ['None']).sort().map(type => `<span class="type-badge type-${type.toLowerCase()}">${capitalizeFirstLetter(type)}</span>`).join(' ')}</div></div>
+                        </div>
+                    `;
+                    resultsDiv.appendChild(formDiv);
+                });
+            } else {
+                errorMessageDiv.innerHTML = `
+                    <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative text-center w-full" role="alert">
+                        <strong class="font-bold">Error:</strong>
+                        <span class="block sm:inline">${data.error}</span>
+                    </div>
+                `;
+            }
+
+            progressBarContainer.classList.add('hidden');
+            document.getElementById('pokemon-name').focus();
+        }
+
+        function capitalizeFirstLetter(string) {
+            return string.charAt(0).toUpperCase() + string.slice(1);
+        }
+
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                fetchPokemon();
+            }
+        }
+
+        function clearResults() {
+            document.getElementById('pokemon-name').value = '';
+            document.getElementById('error-message').innerHTML = '';
+            document.getElementById('results').innerHTML = '';
+            document.getElementById('pokemon-name').focus();
+        }
+
+        function suggestPokemon(pokemonName) {
+            document.getElementById('pokemon-name').value = pokemonName;
+            fetchPokemon(pokemonName);
+        }
+    </script>
+</head>
+<body class="bg-gray-900 text-white">
+    <div class="watermark">Created by BorderM</div>
+    <div class="flex flex-col items-center justify-center min-h-screen bg-zinc-100 dark:bg-gray-900">
+        <h1 class="text-3xl font-bold text-center mb-4">Pokémon Type Effectiveness</h1>
+        <input type="text" id="pokemon-name" placeholder="Enter Pokémon Name" class="input-field w-64 p-2 rounded-lg border border-zinc-300 dark:border-zinc-700 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-300 mb-4" onkeypress="handleKeyPress(event)">
+        <div class="flex space-x-4 mb-4">
+            <button onclick="fetchPokemon()" class="bg-blue-500 text-white p-2 rounded-lg">Search</button>
+            <button onclick="clearResults()" class="bg-gray-500 text-white p-2 rounded-lg">Home</button>
+        </div>
+        <div id="progress-bar-container" class="hidden w-64 bg-gray-200 rounded-full h-2.5 mb-4">
+            <div class="progress-bar"></div>
+        </div>
+        <div id="error-message" class="w-full max-w-lg mx-auto"></div>
+        <div id="results" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4"></div>
+    </div>
+</body>
+</html>
