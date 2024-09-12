@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+	"outDir": "./dist",
+    "baseUrl": ".",
+		"strict": true,
+		"module": "CommonJS",
+		"lib": ["ESNext"],
+		"target": "ESNext",
+		"forceConsistentCasingInFileNames": true,
+		"esModuleInterop": true,
+		"resolveJsonModule": true
+  },
+}

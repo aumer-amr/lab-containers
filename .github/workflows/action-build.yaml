@@ -29,6 +29,9 @@ jobs:
           - dockerfile: ./apps/pokemon/Dockerfile
             base: ./apps/pokemon
             image: ghcr.io/aumer-amr/pokemon
+          - dockerfile: ./apps/satisfactory/Dockerfile
+            base: ./apps/satisfactory
+            image: ghcr.io/aumer-amr/satisfactory
     permissions:
       contents: read
       packages: write
