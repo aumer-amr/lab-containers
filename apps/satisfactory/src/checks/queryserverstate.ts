@@ -44,7 +44,7 @@ export async function progressCheck() {
 	let mileStone = serverState.serverGameState.activeSchematic.substr(serverState.serverGameState.activeSchematic.lastIndexOf('.') + 1);
 	mileStone = mileStone.replace(/[^a-zA-Z0-9-_]/g, '');
 
-	if (mileStone === 'None') {
+	if (mileStone !== 'None') {
 		mileStone = getDisplayName(LangKeys.Schematics, mileStone);
 	}
 
