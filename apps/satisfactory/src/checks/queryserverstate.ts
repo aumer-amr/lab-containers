@@ -6,11 +6,11 @@ import NodeCache from "node-cache";
 const cache = new NodeCache({ stdTTL: 5 });
 const progressMessageId: string | undefined = process.env.DISCORD_PROGRESS_MESSAGE_ID;
 const gameMessageId: string | undefined = process.env.DISCORD_GAME_MESSAGE_ID;
+const unknownType = 'Unknown';
 
 let lastPhase: number;
 let lastTechTier: number;
 let lastMileStone: string;
-let lastPlayersConnected: number;
 
 async function getServerState() {
 	const cachedState = cache.get('serverState');
@@ -21,6 +21,10 @@ async function getServerState() {
 	const body = prepareBody('QueryServerState', null);
 	const result = await doCall(body);
 
+	if (result === null) {
+		return null;
+	}
+
 	cache.set('serverState', result, 5);
 
 	return result
@@ -28,13 +32,19 @@ async function getServerState() {
 
 export async function progressCheck() {
 	const serverState = await getServerState();
+	const lastUpdated = new Date();
+
+	if (serverState === null) {
+		await updateInfo('Server progress', { Phase: unknownType, Tier: unknownType, Milestone: unknownType, LastUpdated: lastUpdated }, 'Red', progressMessageId);
+		return;
+	}
 
 	const phase = serverState.serverGameState.gamePhase.replace(/.*Phase_([0-9]).*/, '$1');
 	const techTier = serverState.serverGameState.techTier;
 	let mileStone = serverState.serverGameState.activeSchematic.substr(serverState.serverGameState.activeSchematic.lastIndexOf('.') + 1);
 	mileStone = mileStone.replace(/[^a-zA-Z0-9-_]/g, '');
 
-	if (mileStone) {
+	if (mileStone === 'None') {
 		mileStone = getDisplayName(LangKeys.Schematics, mileStone);
 	}
 
@@ -54,29 +64,29 @@ export async function progressCheck() {
 
 	if (lastMileStone !== mileStone) {
 		if (lastMileStone) {
-			await sendMessage('Milestone change', `Milestone changed from ${lastMileStone} to ${mileStone}, either completed or just switched`);
+			let message = `Milestone changed from ${lastMileStone} to ${mileStone}`;
+			if (mileStone === 'None') {
+				message = `Milestone ${lastMileStone} completed`;
+			}
+			await sendMessage('Milestone change', message);
 		}
 		lastMileStone = mileStone;
 	}
-
-	const lastUpdated = new Date();
 
 	await updateInfo('Server progress', { Phase: phase, Tier: techTier, Milestone: mileStone, LastUpdated: lastUpdated }, 'Blue', progressMessageId);
 }
 
 export async function gameCheck() {
 	const serverState = await getServerState();
+	const lastUpdated = new Date();
+
+	if (serverState === null) {
+		await updateInfo('Game state', { Connected: 0, Duration: unknownType, LastUpdated: lastUpdated }, 'Red', gameMessageId);
+		return;
+	}
 
 	const connected = serverState.serverGameState.numConnectedPlayers;
 	const duration = serverState.serverGameState.totalGameDuration;
-	const lastUpdated = new Date();
-
-	if (lastPlayersConnected !== connected) {
-		if (lastPlayersConnected) {
-			await sendMessage('Player count change', `Player count changed from ${lastPlayersConnected} to ${connected}`);
-		}
-		lastPlayersConnected = connected;
-	}
 
 	await updateInfo('Game state', { Connected: connected, Duration: formatTime(duration), LastUpdated: lastUpdated }, 'Blue', gameMessageId);
 }
