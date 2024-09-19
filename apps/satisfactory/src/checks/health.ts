@@ -5,11 +5,12 @@ const healthCheckMessageId: string | undefined = process.env.DISCORD_HEALTH_MESS
 
 export async function healthCheck() {
 	const body = prepareBody('healthCheck', { ClientCustomData: null });
-	const result = await doCall(body);
-
-	console.log('Health check result:', result.health);
-
+	let result = await doCall(body);
 	const lastUpdated = new Date();
+
+	if (result === null) {
+		result = { health: 'Unknown' };
+	}
 
 	await updateInfo('Server Health', { State: result.health, LastUpdated: lastUpdated }, result.health !== 'healthy' ? 'Red' : 'Green', healthCheckMessageId);
 }

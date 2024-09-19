@@ -29,6 +29,6 @@ export async function doCall(body: unknown) {
 		return data.data;
 	} catch (error) {
 		console.error('Error calling satisfactory-api:', error);
-		throw error;
+		return null;
 	}
 }
