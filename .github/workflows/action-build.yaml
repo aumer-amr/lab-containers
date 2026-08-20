@@ -1,67 +1,156 @@
-name: Create and publish a Docker image
+name: Build and release apps
 
 on:
   push:
-    tags:
-      - 'v*.*.*'
-    branches: ['main']
+    branches: [main]
+  workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  build-and-push-image:
+  prepare:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - dockerfile: ./apps/site/Dockerfile
-            base: ./apps/site
-            image: ghcr.io/aumer-amr/site
-          - dockerfile: ./apps/gmailctl/Dockerfile
-            base: ./apps/gmailctl
-            image: ghcr.io/aumer-amr/gmailctl
-          - dockerfile: ./apps/bitwarden-backup/Dockerfile
-            base: ./apps/bitwarden-backup
-            image: ghcr.io/aumer-amr/bitwarden-backup
-          - dockerfile: ./apps/pokemon/Dockerfile
-            base: ./apps/pokemon
-            image: ghcr.io/aumer-amr/pokemon
-          - dockerfile: ./apps/satisfactory/Dockerfile
-            base: ./apps/satisfactory
-            image: ghcr.io/aumer-amr/satisfactory
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      changed_apps: ${{ steps.changed.outputs.matrix }}
+      changed_count: ${{ steps.changed.outputs.count }}
+      released_apps: ${{ steps.released.outputs.matrix }}
+      released_count: ${{ steps.released.outputs.count }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prepare releases
+        id: release
+        uses: googleapis/release-please-action@v4
+
+      - name: Find changed apps
+        id: changed
+        shell: bash
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" || "$BEFORE" =~ ^0+$ ]] || ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            mapfile -t paths < <(find apps -mindepth 2 -maxdepth 2 -name Dockerfile -printf '%h\n' | sort -u)
+          else
+            mapfile -t paths < <(git diff --name-only "$BEFORE" "$AFTER" | awk -F/ '$1 == "apps" && NF >= 3 { print $1 "/" $2 }' | sort -u)
+          fi
+
+          entries=()
+          for path in "${paths[@]}"; do
+            [[ -f "$path/Dockerfile" ]] || continue
+            entries+=("$(jq -cn --arg app "${path#apps/}" --arg path "$path" '{app: $app, path: $path}')")
+          done
+
+          matrix="$(printf '%s\n' "${entries[@]}" | jq -sc '{include: .}')"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "count=$(jq '.include | length' <<< "$matrix")" >> "$GITHUB_OUTPUT"
+
+      - name: Find released apps
+        id: released
+        shell: bash
+        env:
+          PATHS_RELEASED: ${{ steps.release.outputs.paths_released }}
+          RELEASE_OUTPUTS: ${{ toJSON(steps.release.outputs) }}
+        run: |
+          set -euo pipefail
+
+          matrix="$(jq -cn \
+            --argjson paths "${PATHS_RELEASED:-[]}" \
+            --argjson outputs "$RELEASE_OUTPUTS" \
+            '{include: [$paths[] as $path | {
+              app: ($path | split("/") | last),
+              path: $path,
+              version: $outputs[($path + "--version")],
+              sha: $outputs[($path + "--sha")]
+            }]}')"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "count=$(jq '.include | length' <<< "$matrix")" >> "$GITHUB_OUTPUT"
+
+  build-changed:
+    needs: prepare
+    if: needs.prepare.outputs.changed_count != '0' && needs.prepare.outputs.released_count == '0'
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.changed_apps) }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Log in to the Container registry
-        uses: docker/login-action@65b78e6e13532edd9afa3aa52ac7964289d1a9c1
+      - name: Log in to container registry
+        uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata (tags, labels) for Docker
+      - name: Extract image metadata
         id: meta
-        uses: docker/metadata-action@9ec57ed1fcdbf14dcef7dfbe97b2010124a938b7
+        uses: docker/metadata-action@v6
         with:
-          images: ${{ matrix.image }}
-          tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=sha     
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.app }}
+          tags: type=sha
 
-      - name: Build and push Docker image
-        uses: docker/build-push-action@f2a1d5e99d037542a71f64918e516c093c6f3fc4
+      - name: Build and push image
+        uses: docker/build-push-action@v7
         with:
-          context: ${{ matrix.base }}
-          file: ${{ matrix.dockerfile }}
+          context: ${{ matrix.path }}
+          file: ${{ matrix.path }}/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  build-release:
+    needs: prepare
+    if: needs.prepare.outputs.released_count != '0'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.released_apps) }}
+    steps:
+      - name: Checkout released revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.sha }}
+
+      - name: Log in to container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract release metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.app }}
+          flavor: latest=auto
+          tags: |
+            type=semver,pattern={{version}},value=${{ matrix.version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ matrix.version }}
+            type=semver,pattern={{major}},value=${{ matrix.version }},enable=${{ !startsWith(matrix.version, '0.') }}
+
+      - name: Build and push release image
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ matrix.path }}
+          file: ${{ matrix.path }}/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

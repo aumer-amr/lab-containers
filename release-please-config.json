@@ -1,0 +1,13 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "include-component-in-tag": true,
+  "include-v-in-tag": true,
+  "separate-pull-requests": true,
+  "packages": {
+    "apps/arma3-tac-map": {
+      "component": "arma3-tac-map",
+      "release-type": "go",
+      "skip-changelog": true
+    }
+  }
+}
