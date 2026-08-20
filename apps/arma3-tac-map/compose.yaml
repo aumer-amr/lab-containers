@@ -1,0 +1,20 @@
+services:
+  tacmap:
+    build: .
+    image: ghcr.io/aumer-amr/arma3-tac-map:local
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      PUBLIC_URL: https://maps.example.com
+      DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID}
+      DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET}
+      DISCORD_GUILD_ID: ${DISCORD_GUILD_ID}
+      DISCORD_ALLOWED_ROLE_ID: ${DISCORD_ALLOWED_ROLE_ID}
+      ADMIN_DISCORD_USER_IDS: ${ADMIN_DISCORD_USER_IDS:-}
+    volumes:
+      - ./data:/data
+      - ./maps:/maps:ro
+    read_only: true
+    tmpfs:
+      - /tmp
