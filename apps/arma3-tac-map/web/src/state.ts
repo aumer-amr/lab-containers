@@ -6,7 +6,7 @@ export type CursorState = Record<string, RemoteCursor>
 export function cursorReducer(state: CursorState, message: SocketMessage): CursorState {
   if (!message.actor) return state
   if (message.type === 'cursor' && message.cursor) return { ...state, [message.actor.id]: { user: message.actor, point: message.cursor } }
-  if (message.type === 'presence' && message.message === 'left') {
+  if ((message.type === 'cursor' && !message.cursor) || (message.type === 'presence' && message.message === 'left')) {
     const next = { ...state }
     delete next[message.actor.id]
     return next
@@ -14,8 +14,16 @@ export function cursorReducer(state: CursorState, message: SocketMessage): Curso
   return state
 }
 
-export const toLeaflet = ([easting, northing]: Point): [number, number] => [northing, easting]
-export const toArma = ([latitude, longitude]: [number, number]): Point => [longitude, latitude]
+const earthRadius = 6378137
+
+export const toLeaflet = ([easting, northing]: Point): [number, number] => [
+  (2 * Math.atan(Math.exp(northing / earthRadius)) - Math.PI / 2) * 180 / Math.PI,
+  easting / earthRadius * 180 / Math.PI,
+]
+export const toArma = ([latitude, longitude]: [number, number]): Point => [
+  longitude * Math.PI / 180 * earthRadius,
+  Math.log(Math.tan(Math.PI / 4 + latitude * Math.PI / 360)) * earthRadius,
+]
 
 export function annotationReducer(state: TacMap | null, message: SocketMessage): TacMap | null {
   if (message.type === 'snapshot') return message.map ?? state

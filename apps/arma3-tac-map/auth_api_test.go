@@ -76,6 +76,7 @@ func TestOAuthRequiresRoleEvenForAdmin(t *testing.T) {
 	callback := httptest.NewRecorder()
 	callbackRequest := httptest.NewRequest(http.MethodGet, "/auth/callback?code=ok&state="+url.QueryEscape(location.Query().Get("state")), nil)
 	callbackRequest.AddCookie(cookieNamed(login.Result().Cookies(), oauthStateCookie))
+	callbackRequest.AddCookie(cookieNamed(login.Result().Cookies(), returnToCookie))
 	handler.ServeHTTP(callback, callbackRequest)
 	if callback.Code != http.StatusForbidden {
 		t.Fatalf("status=%d body=%s", callback.Code, callback.Body.String())
@@ -106,11 +107,12 @@ func TestOAuthSessionAndExpiry(t *testing.T) {
 	server := newServer(config, store)
 	handler := server.routes()
 	login := httptest.NewRecorder()
-	handler.ServeHTTP(login, httptest.NewRequest(http.MethodGet, "/auth/login", nil))
+	handler.ServeHTTP(login, httptest.NewRequest(http.MethodGet, "/auth/login?returnTo=/maps/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", nil))
 	location, _ := url.Parse(login.Header().Get("Location"))
 	callback := httptest.NewRecorder()
 	callbackRequest := httptest.NewRequest(http.MethodGet, "/auth/callback?code=ok&state="+url.QueryEscape(location.Query().Get("state")), nil)
 	callbackRequest.AddCookie(cookieNamed(login.Result().Cookies(), oauthStateCookie))
+	callbackRequest.AddCookie(cookieNamed(login.Result().Cookies(), returnToCookie))
 	handler.ServeHTTP(callback, callbackRequest)
 	if callback.Code != http.StatusFound {
 		t.Fatalf("status=%d body=%s", callback.Code, callback.Body.String())
@@ -118,6 +120,9 @@ func TestOAuthSessionAndExpiry(t *testing.T) {
 	cookie := cookieNamed(callback.Result().Cookies(), sessionCookie)
 	if cookie == nil || !cookie.HttpOnly || !cookie.Secure || cookie.SameSite != http.SameSiteLaxMode {
 		t.Fatalf("bad session cookie: %#v", callback.Result().Cookies())
+	}
+	if got := callback.Header().Get("Location"); got != "https://maps.example.test/maps/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" {
+		t.Fatalf("redirect=%q", got)
 	}
 	meRequest := httptest.NewRequest(http.MethodGet, "/api/me", nil)
 	meRequest.AddCookie(cookie)
@@ -134,6 +139,27 @@ func TestOAuthSessionAndExpiry(t *testing.T) {
 	}
 }
 
+func TestLoginRejectsExternalReturnURL(t *testing.T) {
+	server := newServer(testConfig(t, t.TempDir()), testStore(t))
+	response := httptest.NewRecorder()
+	server.routes().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/auth/login?returnTo=//evil.example/maps/map", nil))
+	if cookie := cookieNamed(response.Result().Cookies(), returnToCookie); cookie == nil || cookie.Value != "/" {
+		t.Fatalf("return cookie=%#v", cookie)
+	}
+}
+
+func TestEmptyListsAreArrays(t *testing.T) {
+	server := newServer(testConfig(t, t.TempDir()), testStore(t))
+	user := User{ID: "admin", Username: "admin", DisplayName: "Admin"}
+	for _, path := range []string{"/api/maps", "/api/trash", "/api/worlds", "/api/maps/missing/revisions"} {
+		response := httptest.NewRecorder()
+		server.routes().ServeHTTP(response, authenticatedRequest(t, server, user, http.MethodGet, path, ""))
+		if response.Code != http.StatusOK || response.Body.String() != "[]\n" {
+			t.Fatalf("%s status=%d body=%q", path, response.Code, response.Body.String())
+		}
+	}
+}
+
 func TestUnsafeAPIRequiresExactOrigin(t *testing.T) {
 	store := testStore(t)
 	server := newServer(testConfig(t, t.TempDir()), store)
@@ -143,6 +169,68 @@ func TestUnsafeAPIRequiresExactOrigin(t *testing.T) {
 	server.routes().ServeHTTP(response, request)
 	if response.Code != http.StatusForbidden {
 		t.Fatalf("status=%d", response.Code)
+	}
+}
+
+func TestEveryAPIRouteRequiresAuthentication(t *testing.T) {
+	server := newServer(testConfig(t, t.TempDir()), testStore(t))
+	routes := []struct {
+		method string
+		path   string
+	}{
+		{http.MethodGet, "/api/me"},
+		{http.MethodGet, "/api/worlds"},
+		{http.MethodGet, "/api/worlds/altis/assets/map.json"},
+		{http.MethodGet, "/api/assets/fonts/test.pbf"},
+		{http.MethodGet, "/api/maps"},
+		{http.MethodPost, "/api/maps"},
+		{http.MethodGet, "/api/trash"},
+		{http.MethodDelete, "/api/trash/map"},
+		{http.MethodGet, "/api/maps/map"},
+		{http.MethodPatch, "/api/maps/map"},
+		{http.MethodDelete, "/api/maps/map"},
+		{http.MethodPost, "/api/maps/map/trash/restore"},
+		{http.MethodPost, "/api/maps/map/layers"},
+		{http.MethodPatch, "/api/maps/map/layers/layer"},
+		{http.MethodDelete, "/api/maps/map/layers/layer"},
+		{http.MethodPut, "/api/maps/map/layers/order"},
+		{http.MethodGet, "/api/maps/map/revisions"},
+		{http.MethodPost, "/api/maps/map/revisions/1/restore"},
+		{http.MethodPost, "/api/maps/map/exports/aet"},
+		{http.MethodGet, "/api/maps/map/ws"},
+	}
+	for _, route := range routes {
+		t.Run(route.method+" "+route.path, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			server.routes().ServeHTTP(response, httptest.NewRequest(route.method, route.path, nil))
+			if response.Code != http.StatusUnauthorized {
+				t.Fatalf("status=%d body=%q", response.Code, response.Body.String())
+			}
+		})
+	}
+}
+
+func TestAdminAPIsRejectNonAdmins(t *testing.T) {
+	server := newServer(testConfig(t, t.TempDir()), testStore(t))
+	member := User{ID: "member", Username: "member", DisplayName: "Member"}
+	routes := []struct {
+		method string
+		path   string
+	}{
+		{http.MethodGet, "/api/trash"},
+		{http.MethodDelete, "/api/trash/missing"},
+		{http.MethodPost, "/api/maps/missing/trash/restore"},
+		{http.MethodGet, "/api/maps/missing/revisions"},
+		{http.MethodPost, "/api/maps/missing/revisions/1/restore"},
+	}
+	for _, route := range routes {
+		t.Run(route.method+" "+route.path, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			server.routes().ServeHTTP(response, authenticatedRequest(t, server, member, route.method, route.path, ""))
+			if response.Code != http.StatusForbidden {
+				t.Fatalf("status=%d body=%q", response.Code, response.Body.String())
+			}
+		})
 	}
 }
 

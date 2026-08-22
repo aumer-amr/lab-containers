@@ -28,17 +28,18 @@ func (s *Server) routes() http.Handler {
 	protected.HandleFunc("GET /api/assets/fonts/{asset...}", s.sharedAsset)
 	protected.HandleFunc("GET /api/maps", s.maps)
 	protected.HandleFunc("POST /api/maps", s.maps)
-	protected.HandleFunc("GET /api/trash", s.trash)
+	protected.HandleFunc("GET /api/trash", adminOnly(s.trash))
+	protected.HandleFunc("DELETE /api/trash/{map}", adminOnly(s.purgeTrash))
 	protected.HandleFunc("GET /api/maps/{map}", s.mapByID)
 	protected.HandleFunc("PATCH /api/maps/{map}", s.mapByID)
 	protected.HandleFunc("DELETE /api/maps/{map}", s.mapByID)
-	protected.HandleFunc("POST /api/maps/{map}/trash/restore", s.restoreTrash)
+	protected.HandleFunc("POST /api/maps/{map}/trash/restore", adminOnly(s.restoreTrash))
 	protected.HandleFunc("POST /api/maps/{map}/layers", s.layers)
 	protected.HandleFunc("PATCH /api/maps/{map}/layers/{layer}", s.layerByID)
 	protected.HandleFunc("DELETE /api/maps/{map}/layers/{layer}", s.layerByID)
 	protected.HandleFunc("PUT /api/maps/{map}/layers/order", s.layerOrder)
-	protected.HandleFunc("GET /api/maps/{map}/revisions", s.revisionList)
-	protected.HandleFunc("POST /api/maps/{map}/revisions/{revision}/restore", s.restoreHistory)
+	protected.HandleFunc("GET /api/maps/{map}/revisions", adminOnly(s.revisionList))
+	protected.HandleFunc("POST /api/maps/{map}/revisions/{revision}/restore", adminOnly(s.restoreHistory))
 	protected.HandleFunc("POST /api/maps/{map}/exports/aet", s.aetExport)
 	protected.HandleFunc("GET /api/maps/{map}/ws", s.webSocket)
 	mux.Handle("/api/", s.authenticate(s.checkOrigin(protected)))
@@ -47,11 +48,22 @@ func (s *Server) routes() http.Handler {
 	return securityHeaders(mux)
 }
 
+func adminOnly(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user, ok := contextUser(r.Context())
+		if !ok || !user.Admin {
+			writeError(w, errForbidden)
+			return
+		}
+		next(w, r)
+	}
+}
+
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "same-origin")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; connect-src 'self' ws: wss:; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; connect-src 'self' ws: wss:; img-src 'self' data: blob: https://cdn.discordapp.com; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:")
 		next.ServeHTTP(w, r)
 	})
 }
@@ -161,11 +173,6 @@ func (s *Server) mapByID(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) trash(w http.ResponseWriter, r *http.Request) {
-	user, _ := contextUser(r.Context())
-	if !user.Admin {
-		writeError(w, errForbidden)
-		return
-	}
 	values, err := s.store.listMaps(r.Context(), true)
 	if err != nil {
 		writeError(w, err)
@@ -189,6 +196,17 @@ func (s *Server) restoreTrash(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, value)
+}
+
+func (s *Server) purgeTrash(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("map")
+	user, _ := contextUser(r.Context())
+	if err := s.store.purgeMap(r.Context(), user, id); err != nil {
+		writeError(w, err)
+		return
+	}
+	s.closeRoom(id)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) layers(w http.ResponseWriter, r *http.Request) {

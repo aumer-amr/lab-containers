@@ -9,6 +9,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
 export const api = {
   me: () => request<User>('/api/me'),
+  logout: () => request<void>('/auth/logout', { method: 'POST' }),
   worlds: () => request<World[]>('/api/worlds'),
   maps: () => request<TacMap[]>('/api/maps'),
   trash: () => request<TacMap[]>('/api/trash'),
@@ -17,6 +18,7 @@ export const api = {
   renameMap: (id: string, name: string) => request<TacMap>(`/api/maps/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
   deleteMap: (id: string) => request<void>(`/api/maps/${id}`, { method: 'DELETE' }),
   restoreTrash: (id: string) => request<TacMap>(`/api/maps/${id}/trash/restore`, { method: 'POST' }),
+  purgeTrash: (id: string) => request<void>(`/api/trash/${id}`, { method: 'DELETE' }),
   createLayer: (map: string, name: string) => request(`/api/maps/${map}/layers`, { method: 'POST', body: JSON.stringify({ name }) }),
   renameLayer: (map: string, layer: string, name: string) => request(`/api/maps/${map}/layers/${layer}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
   deleteLayer: (map: string, layer: string) => request<void>(`/api/maps/${map}/layers/${layer}`, { method: 'DELETE' }),

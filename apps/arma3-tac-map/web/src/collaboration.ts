@@ -41,6 +41,6 @@ export function useCollaboration(mapID: string, initial: TacMap) {
     create: (annotation: Omit<Annotation, 'id' | 'mapId'>) => send({ type: 'mutation', operation: 'create', annotation: annotation as Annotation }),
     update: (annotation: Annotation) => send({ type: 'mutation', operation: 'update', id: annotation.id, annotation }),
     remove: (id: string) => send({ type: 'mutation', operation: 'delete', id }),
-    cursor: (cursor: Point) => send({ type: 'cursor', cursor }),
+    cursor: (cursor: Point | null) => send({ type: 'cursor', cursor }),
   }
 }

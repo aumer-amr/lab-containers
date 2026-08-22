@@ -6,9 +6,12 @@ const owner: User = { id: 'owner', username: 'owner', displayName: 'Owner', admi
 const map: TacMap = { id: 'map', name: 'Plan', world: 'altis', creatorId: owner.id, version: 1, deleted: false, worldAvailable: true, layers: [{ id: 'general', mapId: 'map', name: 'General', position: 0, annotations: [] }] }
 
 describe('map state', () => {
-  it('converts Leaflet latitude/longitude without swapping Arma easting/northing', () => {
-    expect(toLeaflet([123, 456])).toEqual([456, 123])
-    expect(toArma([456, 123])).toEqual([123, 456])
+  it('converts Arma metres to Web Mercator coordinates and back', () => {
+    const leaflet = toLeaflet([4096, 4096])
+    expect(leaflet[0]).toBeCloseTo(0.0368, 3)
+    expect(leaflet[1]).toBeCloseTo(0.0368, 3)
+    expect(toArma(leaflet)[0]).toBeCloseTo(4096)
+    expect(toArma(leaflet)[1]).toBeCloseTo(4096)
   })
 
   it('applies authoritative snapshot and mutation versions', () => {
@@ -33,9 +36,10 @@ describe('map state', () => {
     expect(editingEnabled(true, { ...map, worldAvailable: false })).toBe(false)
   })
 
-  it('tracks cursor positions and removes users when they leave', () => {
+  it('tracks cursors and removes them when pointing ends or users leave', () => {
     const present = cursorReducer({}, { type: 'cursor', actor: owner, cursor: [7, 8] })
     expect(present.owner.point).toEqual([7, 8])
+    expect(cursorReducer(present, { type: 'cursor', actor: owner, cursor: null })).toEqual({})
     expect(cursorReducer(present, { type: 'presence', actor: owner, message: 'left' })).toEqual({})
   })
 })

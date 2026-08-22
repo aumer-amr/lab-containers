@@ -40,6 +40,33 @@ func TestDiscoverWorldsRejectsIncompleteAssets(t *testing.T) {
 	}
 }
 
+func TestDiscoverWorldsSupportsRasterTilePyramids(t *testing.T) {
+	root := t.TempDir()
+	directory := filepath.Join(root, "lythium")
+	for _, style := range []string{"", "colorRelief", "topoDark", "topoRelief"} {
+		for _, zoom := range []string{"0", "7"} {
+			if err := os.MkdirAll(filepath.Join(directory, style, zoom, "0"), 0755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(directory, style, zoom, "0", "0.png"), []byte("tile"), 0644); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	manifest := `{"worldSize":20480,"maxZoom":7,"hasTopo":true,"hasColorRelief":true,"hasTopoDark":true,"hasTopoRelief":true}`
+	if err := os.WriteFile(filepath.Join(directory, "map.json"), []byte(manifest), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	world, err := inspectWorld(root, "lythium")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if world.Format != "raster" || world.MaxZoom != 7 || len(world.Styles) != 4 {
+		t.Fatalf("unexpected raster world: %#v", world)
+	}
+}
+
 func TestSafeJoinRejectsTraversal(t *testing.T) {
 	if _, ok := safeJoin(t.TempDir(), "../secret"); ok {
 		t.Fatal("traversal accepted")

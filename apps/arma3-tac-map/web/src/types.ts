@@ -5,13 +5,14 @@ export type Annotation = {
   id: string
   mapId: string
   layerId: string
-  kind: 'marker' | 'polyline' | 'freehand'
+  kind: 'marker' | 'polyline' | 'freehand' | 'measure' | 'radius' | 'note'
   position: number
   color: string
   points?: Point[]
   point?: Point
   icon?: string
   label?: string
+  text?: string
   rotation?: number
   scale?: number
 }
@@ -23,12 +24,13 @@ export type TacMap = {
   creatorId: string
   creator?: User
   version: number
+  createdAt?: number
   deleted: boolean
   worldAvailable: boolean
   layers: Layer[]
 }
-export type World = { name: string; size: number; styles: string[]; preview?: string; hasMeta: boolean }
-export type Revision = { id: number; mapId: string; version: number; actor: User; kind: string; createdAt: number }
+export type World = { name: string; size: number; styles: string[]; format: 'pmtiles' | 'raster'; maxZoom?: number; preview?: string; hasMeta: boolean }
+export type Revision = { id: number; mapId: string; version: number; actor: User; kind: string; data?: { annotation?: Annotation; snapshot?: TacMap }; createdAt: number }
 export type SocketMessage = {
   type: 'snapshot' | 'mutation' | 'acknowledgement' | 'error' | 'presence' | 'cursor'
   version?: number
@@ -37,6 +39,6 @@ export type SocketMessage = {
   id?: string
   actor?: User
   map?: TacMap
-  cursor?: Point
+  cursor?: Point | null
   message?: string
 }

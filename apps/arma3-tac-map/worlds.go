@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -18,15 +19,22 @@ type World struct {
 	Name    string   `json:"name"`
 	Size    float64  `json:"size"`
 	Styles  []string `json:"styles"`
+	Format  string   `json:"format"`
+	MaxZoom int      `json:"maxZoom,omitempty"`
 	Preview string   `json:"preview,omitempty"`
 	HasMeta bool     `json:"hasMeta"`
 }
 
 type worldManifest struct {
-	WorldSize    float64         `json:"worldSize"`
-	WorldSizeAlt float64         `json:"world_size"`
-	Size         float64         `json:"size"`
-	Styles       json.RawMessage `json:"styles"`
+	WorldSize      float64         `json:"worldSize"`
+	WorldSizeAlt   float64         `json:"world_size"`
+	Size           float64         `json:"size"`
+	Styles         json.RawMessage `json:"styles"`
+	MaxZoom        int             `json:"maxZoom"`
+	HasColorRelief bool            `json:"hasColorRelief"`
+	HasTopo        bool            `json:"hasTopo"`
+	HasTopoDark    bool            `json:"hasTopoDark"`
+	HasTopoRelief  bool            `json:"hasTopoRelief"`
 }
 
 func discoverWorlds(root string) ([]World, error) {
@@ -34,7 +42,7 @@ func discoverWorlds(root string) ([]World, error) {
 	if err != nil {
 		return nil, err
 	}
-	var worlds []World
+	worlds := make([]World, 0)
 	for _, entry := range entries {
 		if !entry.IsDir() || !safeWorldName.MatchString(entry.Name()) {
 			continue
@@ -68,30 +76,33 @@ func inspectWorld(root, name string) (World, error) {
 	if size <= 0 {
 		return World{}, errors.New("world size must be positive")
 	}
-	styleEntries, err := os.ReadDir(filepath.Join(directory, "styles"))
-	if err != nil {
-		return World{}, err
-	}
 	var styles []string
-	for _, entry := range styleEntries {
-		if entry.IsDir() || strings.ToLower(filepath.Ext(entry.Name())) != ".json" {
-			continue
+	format := "pmtiles"
+	if styleEntries, err := os.ReadDir(filepath.Join(directory, "styles")); err == nil {
+		for _, entry := range styleEntries {
+			if entry.IsDir() || strings.ToLower(filepath.Ext(entry.Name())) != ".json" {
+				continue
+			}
+			stylePath := filepath.Join(directory, "styles", entry.Name())
+			styleRaw, err := os.ReadFile(stylePath)
+			if err != nil || !json.Valid(styleRaw) || !referencesExist(directory, styleRaw) {
+				continue
+			}
+			styles = append(styles, strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name())))
 		}
-		stylePath := filepath.Join(directory, "styles", entry.Name())
-		styleRaw, err := os.ReadFile(stylePath)
-		if err != nil || !json.Valid(styleRaw) {
-			continue
-		}
-		if !referencesExist(directory, styleRaw) {
-			continue
-		}
-		styles = append(styles, strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name())))
+	}
+	if len(styles) == 0 {
+		format = "raster"
+		styles = rasterStyles(directory, manifest)
 	}
 	if len(styles) == 0 {
 		return World{}, errors.New("world has no complete styles")
 	}
 	sort.Strings(styles)
-	world := World{Name: name, Size: size, Styles: styles}
+	world := World{Name: name, Size: size, Styles: styles, Format: format}
+	if format == "raster" {
+		world.MaxZoom = manifest.MaxZoom
+	}
 	if _, err := os.Stat(filepath.Join(directory, "preview.png")); err == nil {
 		world.Preview = "preview.png"
 	}
@@ -99,6 +110,35 @@ func inspectWorld(root, name string) (World, error) {
 		world.HasMeta = true
 	}
 	return world, nil
+}
+
+func rasterStyles(directory string, manifest worldManifest) []string {
+	if manifest.MaxZoom < 0 {
+		return nil
+	}
+	candidates := []struct {
+		name, path string
+		enabled    bool
+	}{
+		{"topo", "", manifest.HasTopo},
+		{"color-relief", "colorRelief", manifest.HasColorRelief},
+		{"topo-dark", "topoDark", manifest.HasTopoDark},
+		{"topo-relief", "topoRelief", manifest.HasTopoRelief},
+	}
+	styles := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		if !candidate.enabled {
+			continue
+		}
+		first := filepath.Join(directory, candidate.path, "0", "0", "0.png")
+		last := filepath.Join(directory, candidate.path, strconv.Itoa(manifest.MaxZoom), "0", "0.png")
+		firstInfo, firstErr := os.Stat(first)
+		lastInfo, lastErr := os.Stat(last)
+		if firstErr == nil && lastErr == nil && !firstInfo.IsDir() && !lastInfo.IsDir() {
+			styles = append(styles, candidate.name)
+		}
+	}
+	return styles
 }
 
 func referencesExist(worldDirectory string, raw []byte) bool {

@@ -171,7 +171,7 @@ func (s *Store) createMap(ctx context.Context, actor User, name, world string) (
 	if err != nil {
 		return Map{}, err
 	}
-	value := Map{ID: mapID, Name: strings.TrimSpace(name), World: world, CreatorID: actor.ID, Version: 1, WorldAvailable: true, Layers: []Layer{{ID: layerID, MapID: mapID, Name: "General", Position: 0}}}
+	value := Map{ID: mapID, Name: strings.TrimSpace(name), World: world, CreatorID: actor.ID, Version: 1, CreatedAt: time.Now().Unix(), WorldAvailable: true, Layers: []Layer{{ID: layerID, MapID: mapID, Name: "General", Position: 0}}}
 	err = s.mutate(ctx, mapID, actor.ID, 0, "map.create", event{Map: &value}, func(tx *sql.Tx, version int64) error {
 		if _, err := tx.ExecContext(ctx, `INSERT INTO maps(id,name,world,creator_id,version) VALUES(?,?,?,?,?)`, mapID, value.Name, world, actor.ID, version); err != nil {
 			return err
@@ -226,17 +226,17 @@ func (s *Store) listMaps(ctx context.Context, trash bool) ([]Map, error) {
 	if trash {
 		operator = "IS NOT NULL"
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT m.id,m.name,m.world,m.creator_id,m.version,m.deleted_at,u.id,u.username,u.display_name,u.avatar FROM maps m JOIN users u ON u.id=m.creator_id WHERE m.deleted_at `+operator+` ORDER BY m.name,m.id`)
+	rows, err := s.db.QueryContext(ctx, `SELECT m.id,m.name,m.world,m.creator_id,m.version,r.created_at,m.deleted_at,u.id,u.username,u.display_name,u.avatar FROM maps m JOIN users u ON u.id=m.creator_id JOIN revisions r ON r.map_id=m.id AND r.version=1 WHERE m.deleted_at `+operator+` ORDER BY r.created_at DESC,r.id DESC`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var maps []Map
+	maps := make([]Map, 0)
 	for rows.Next() {
 		var value Map
 		var deleted sql.NullInt64
 		var creator User
-		if err := rows.Scan(&value.ID, &value.Name, &value.World, &value.CreatorID, &value.Version, &deleted, &creator.ID, &creator.Username, &creator.DisplayName, &creator.Avatar); err != nil {
+		if err := rows.Scan(&value.ID, &value.Name, &value.World, &value.CreatorID, &value.Version, &value.CreatedAt, &deleted, &creator.ID, &creator.Username, &creator.DisplayName, &creator.Avatar); err != nil {
 			return nil, err
 		}
 		value.Deleted = deleted.Valid
@@ -250,7 +250,7 @@ func (s *Store) getMap(ctx context.Context, id string) (Map, error) {
 	var value Map
 	var deleted sql.NullInt64
 	var creator User
-	err := s.db.QueryRowContext(ctx, `SELECT m.id,m.name,m.world,m.creator_id,m.version,m.deleted_at,u.id,u.username,u.display_name,u.avatar FROM maps m JOIN users u ON u.id=m.creator_id WHERE m.id=?`, id).Scan(&value.ID, &value.Name, &value.World, &value.CreatorID, &value.Version, &deleted, &creator.ID, &creator.Username, &creator.DisplayName, &creator.Avatar)
+	err := s.db.QueryRowContext(ctx, `SELECT m.id,m.name,m.world,m.creator_id,m.version,r.created_at,m.deleted_at,u.id,u.username,u.display_name,u.avatar FROM maps m JOIN users u ON u.id=m.creator_id JOIN revisions r ON r.map_id=m.id AND r.version=1 WHERE m.id=?`, id).Scan(&value.ID, &value.Name, &value.World, &value.CreatorID, &value.Version, &value.CreatedAt, &deleted, &creator.ID, &creator.Username, &creator.DisplayName, &creator.Avatar)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Map{}, errNotFound
 	}
@@ -353,7 +353,31 @@ func (s *Store) setMapDeleted(ctx context.Context, actor User, mapID string, del
 	})
 }
 
+func (s *Store) purgeMap(ctx context.Context, actor User, mapID string) error {
+	if !actor.Admin {
+		return errForbidden
+	}
+	var deletedAt sql.NullInt64
+	if err := s.db.QueryRowContext(ctx, `SELECT deleted_at FROM maps WHERE id=?`, mapID).Scan(&deletedAt); errors.Is(err, sql.ErrNoRows) {
+		return errNotFound
+	} else if err != nil {
+		return err
+	}
+	if !deletedAt.Valid {
+		return errConflict
+	}
+	_, err := s.db.ExecContext(ctx, `DELETE FROM maps WHERE id=?`, mapID)
+	return err
+}
+
 func (s *Store) createLayer(ctx context.Context, actor User, mapID, name string) (Layer, error) {
+	manager, err := s.isMapManager(ctx, mapID, actor)
+	if err != nil {
+		return Layer{}, err
+	}
+	if !manager {
+		return Layer{}, errForbidden
+	}
 	if err := validateName(name); err != nil {
 		return Layer{}, err
 	}
@@ -536,6 +560,16 @@ func (s *Store) mutateAnnotation(ctx context.Context, actor User, mapID, operati
 			}
 		}
 	}
+	if operation == "delete" {
+		var raw []byte
+		if err := s.db.QueryRowContext(ctx, `SELECT data FROM annotations WHERE id=? AND map_id=?`, id, mapID).Scan(&raw); errors.Is(err, sql.ErrNoRows) {
+			return 0, errNotFound
+		} else if err != nil {
+			return 0, err
+		} else if err := json.Unmarshal(raw, annotation); err != nil {
+			return 0, err
+		}
+	}
 	kind := "annotation." + operation
 	data := event{Annotation: annotation, ID: id}
 	version, err := s.mutateVersion(ctx, mapID, actor.ID, expected, kind, data, func(tx *sql.Tx, version int64) error {
@@ -585,7 +619,7 @@ func (s *Store) revisions(ctx context.Context, mapID string) ([]Revision, error)
 		return nil, err
 	}
 	defer rows.Close()
-	var values []Revision
+	values := make([]Revision, 0)
 	for rows.Next() {
 		var r Revision
 		if err := rows.Scan(&r.ID, &r.MapID, &r.Version, &r.Kind, &r.Data, &r.CreatedAt, &r.Actor.ID, &r.Actor.Username, &r.Actor.DisplayName, &r.Actor.Avatar); err != nil {

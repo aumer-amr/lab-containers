@@ -12,6 +12,7 @@ const (
 	maxAnnotations = 10_000
 	maxPoints      = 2_000
 	maxLabelLength = 200
+	maxNoteLength  = 1_000
 )
 
 var allowedIcons = stringSet("mil_dot", "mil_objective", "mil_warning", "mil_start", "mil_end", "mil_pickup", "mil_destroy", "mil_ambush", "mil_arrow", "mil_circle", "mil_box", "mil_triangle", "mil_flag", "mil_unknown")
@@ -46,6 +47,7 @@ type Annotation struct {
 	Point    *Point  `json:"point,omitempty"`
 	Icon     string  `json:"icon,omitempty"`
 	Label    string  `json:"label,omitempty"`
+	Text     string  `json:"text,omitempty"`
 	Rotation float64 `json:"rotation,omitempty"`
 	Scale    float64 `json:"scale,omitempty"`
 }
@@ -57,14 +59,25 @@ func (a Annotation) validate() error {
 	if utf8.RuneCountInString(a.Label) > maxLabelLength || containsControl(a.Label) {
 		return errors.New("label must contain at most 200 printable characters")
 	}
+	if a.Kind != "note" && a.Text != "" {
+		return errors.New("note text is only valid for notes")
+	}
 	switch a.Kind {
 	case "polyline", "freehand":
 		if len(a.Points) < 2 || len(a.Points) > maxPoints || a.Point != nil || a.Icon != "" {
 			return errors.New("line requires 2 to 2000 points")
 		}
+	case "measure", "radius":
+		if len(a.Points) != 2 || a.Point != nil || a.Icon != "" {
+			return errors.New("measurement requires exactly 2 points")
+		}
 	case "marker":
 		if a.Point == nil || len(a.Points) != 0 || !allowedIcons[a.Icon] || a.Scale <= 0 {
 			return errors.New("invalid marker")
+		}
+	case "note":
+		if strings.TrimSpace(a.Text) == "" || utf8.RuneCountInString(a.Text) > maxNoteLength || containsNoteControl(a.Text) || a.Point != nil || len(a.Points) != 0 || a.Icon != "" || a.Label != "" || a.Rotation != 0 || a.Scale != 0 {
+			return errors.New("note must contain 1 to 1000 printable characters and no map geometry")
 		}
 	default:
 		return errors.New("unsupported annotation kind")
@@ -75,6 +88,15 @@ func (a Annotation) validate() error {
 func containsControl(value string) bool {
 	for _, r := range value {
 		if r < 0x20 || r == 0x7f {
+			return true
+		}
+	}
+	return false
+}
+
+func containsNoteControl(value string) bool {
+	for _, r := range value {
+		if r < 0x20 && r != '\n' && r != '\t' || r == 0x7f {
 			return true
 		}
 	}
@@ -96,6 +118,7 @@ type Map struct {
 	CreatorID      string  `json:"creatorId"`
 	Creator        *User   `json:"creator,omitempty"`
 	Version        int64   `json:"version"`
+	CreatedAt      int64   `json:"createdAt"`
 	Deleted        bool    `json:"deleted"`
 	WorldAvailable bool    `json:"worldAvailable"`
 	Layers         []Layer `json:"layers,omitempty"`

@@ -62,6 +62,12 @@ func readSocketType(t *testing.T, connection *websocket.Conn, want string) socke
 	}
 }
 
+func TestCursorBroadcastRateIsSmooth(t *testing.T) {
+	if cursorBroadcastInterval > time.Second/30 {
+		t.Fatalf("cursor broadcast interval %s is below 30 Hz", cursorBroadcastInterval)
+	}
+}
+
 func TestWebSocketCollaborationResyncAndRestore(t *testing.T) {
 	store := testStore(t)
 	owner := testUser(t, store, "owner", false)
@@ -130,6 +136,13 @@ func TestWebSocketCollaborationResyncAndRestore(t *testing.T) {
 	cursorMessage := readSocketType(t, second, "cursor")
 	if cursorMessage.Actor.ID != owner.ID || *cursorMessage.Cursor != cursor {
 		t.Fatalf("bad cursor: %#v", cursorMessage)
+	}
+	if err := wsjson.Write(context.Background(), first, socketMessage{Type: "cursor"}); err != nil {
+		t.Fatal(err)
+	}
+	cursorEnded := readSocketType(t, second, "cursor")
+	if cursorEnded.Actor.ID != owner.ID || cursorEnded.Cursor != nil {
+		t.Fatalf("bad cursor end: %#v", cursorEnded)
 	}
 	adminToken, err := store.createSession(context.Background(), admin.ID)
 	if err != nil {

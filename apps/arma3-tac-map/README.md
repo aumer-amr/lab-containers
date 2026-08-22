@@ -46,13 +46,33 @@ Mount OCAP2-generated assets read-only at `/maps`. Each complete world uses:
 /maps/fonts/...                  # shared fonts when referenced
 ```
 
-`map.json` needs positive `worldSize`, `world_size`, or `size`. A world is offered for new plans only when it has at least one valid style and all `.pmtiles` references exist. Asset names may contain letters, numbers, dots, underscores, and hyphens. Regenerate assets outside this container; runtime upload/generation is intentionally unsupported.
+GDAL2Tiles raster exports are also supported. Keep their numeric `{z}/{x}/{y}.png` folders beside `map.json`; optional terrain variants use the existing `colorRelief`, `topoDark`, and `topoRelief` directories. The manifest's `maxZoom` and `hasTopo*` flags determine which styles are offered.
+
+`map.json` needs positive `worldSize`, `world_size`, or `size`. A world is offered for new plans only when it has at least one complete MapLibre/PMTiles style or raster tile pyramid. Asset names may contain letters, numbers, dots, underscores, and hyphens. Regenerate assets outside this container; runtime upload/generation is intentionally unsupported.
 
 Existing plans remain visible if their world disappears. Editing is disabled until the mount returns; export and history remain usable.
 
 ## Run
 
-Prepare writable data and read-only map directories for container UID/GID `10001`, then edit `compose.yaml` and run:
+For a local test, register this exact Discord OAuth2 redirect:
+
+```text
+http://localhost:8080/auth/callback
+```
+
+Copy `.env.example` to `.env`, fill in the Discord values, create the mounted directories, then start the app:
+
+```sh
+cp .env.example .env
+mkdir -p data maps
+# Linux only: let container UID write SQLite data
+sudo chown 10001:10001 data
+docker compose up --build
+```
+
+Open <http://localhost:8080>. Use `localhost`, not `127.0.0.1`, because `PUBLIC_URL`, the browser origin, and Discord redirect must match exactly. Browsers permit the required `Secure` session cookie on localhost.
+
+For deployment, prepare writable data and read-only map directories for container UID/GID `10001`, set an HTTPS `PUBLIC_URL`, then run:
 
 ```sh
 docker compose up -d --build

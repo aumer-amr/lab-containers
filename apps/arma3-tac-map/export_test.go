@@ -30,6 +30,49 @@ func TestAnnotationRejectsControlLabel(t *testing.T) {
 	}
 }
 
+func TestMeasurementRequiresTwoPoints(t *testing.T) {
+	valid := Annotation{Kind: "radius", Color: "ColorBlack", Points: []Point{{1, 2}, {4, 6}}}
+	if err := valid.validate(); err != nil {
+		t.Fatal(err)
+	}
+	valid.Points = valid.Points[:1]
+	if valid.validate() == nil {
+		t.Fatal("expected one-point measurement rejection")
+	}
+}
+
+func TestExportAETSkipsMeasurements(t *testing.T) {
+	points := []Point{{1, 2}, {4, 6}}
+	value := Map{Layers: []Layer{{ID: "layer", Annotations: []Annotation{
+		{ID: "distance", LayerID: "layer", Kind: "measure", Color: "ColorRed", Points: points},
+		{ID: "circle", LayerID: "layer", Kind: "radius", Color: "ColorBlue", Points: points},
+		{ID: "note", LayerID: "layer", Kind: "note", Color: "ColorYellow", Text: "Hold\nposition"},
+	}}}}
+	output, err := exportAET(value, []string{"layer"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(output, "private _data = [[],[],[]];") {
+		t.Fatalf("measurements entered export: %s", output)
+	}
+}
+
+func TestNoteRequiresTextAndNoMapGeometry(t *testing.T) {
+	note := Annotation{Kind: "note", Color: "ColorYellow", Text: "Hold\nposition"}
+	if err := note.validate(); err != nil {
+		t.Fatal(err)
+	}
+	note.Text = " "
+	if note.validate() == nil {
+		t.Fatal("expected empty note rejection")
+	}
+	note.Text = "Hold"
+	note.Points = []Point{{1, 2}, {3, 4}}
+	if note.validate() == nil {
+		t.Fatal("expected note geometry rejection")
+	}
+}
+
 func TestExportAETEmptySelectionExportsNoAnnotations(t *testing.T) {
 	point := Point{1, 2}
 	value := Map{Layers: []Layer{{ID: "layer", Annotations: []Annotation{{ID: "marker", LayerID: "layer", Kind: "marker", Color: "ColorBlack", Icon: "mil_dot", Point: &point, Scale: 1}}}}}

@@ -12,6 +12,8 @@ import (
 	"github.com/coder/websocket/wsjson"
 )
 
+const cursorBroadcastInterval = 30 * time.Millisecond
+
 type socketMessage struct {
 	Type       string      `json:"type"`
 	Version    int64       `json:"version,omitempty"`
@@ -161,11 +163,13 @@ func (s *Server) webSocket(w http.ResponseWriter, r *http.Request) {
 			c.send <- socketMessage{Type: "acknowledgement", Version: version, ID: annotation.ID}
 		case "cursor":
 			now := time.Now()
-			if message.Cursor == nil || now.Sub(c.lastCursor) < 100*time.Millisecond {
-				continue
+			if message.Cursor == nil {
+				c.lastCursor = time.Time{}
+				room.broadcast(socketMessage{Type: "cursor", Actor: &user})
+			} else if now.Sub(c.lastCursor) >= cursorBroadcastInterval {
+				c.lastCursor = now
+				room.broadcast(socketMessage{Type: "cursor", Actor: &user, Cursor: message.Cursor})
 			}
-			c.lastCursor = now
-			room.broadcast(socketMessage{Type: "cursor", Actor: &user, Cursor: message.Cursor})
 		case "presence":
 			c.send <- socketMessage{Type: "presence", Actor: &user, Message: "present"}
 		default:

@@ -15,6 +15,7 @@ import (
 const (
 	sessionCookie    = "tacmap_session"
 	oauthStateCookie = "tacmap_oauth_state"
+	returnToCookie   = "tacmap_return_to"
 )
 
 type userContextKey struct{}
@@ -45,6 +46,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.SetCookie(w, &http.Cookie{Name: oauthStateCookie, Value: state, Path: "/auth/callback", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode, MaxAge: 600})
+	http.SetCookie(w, &http.Cookie{Name: returnToCookie, Value: safeReturnTo(r.URL.Query().Get("returnTo")), Path: "/auth/callback", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode, MaxAge: 600})
 	query := url.Values{"client_id": {s.config.DiscordClientID}, "redirect_uri": {s.config.PublicURL.ResolveReference(&url.URL{Path: "/auth/callback"}).String()}, "response_type": {"code"}, "scope": {"identify guilds.members.read"}, "state": {state}}
 	http.Redirect(w, r, s.config.DiscordAuthorizeURL+"?"+query.Encode(), http.StatusFound)
 }
@@ -52,7 +54,12 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 func (s *Server) callback(w http.ResponseWriter, r *http.Request) {
 	state := r.URL.Query().Get("state")
 	stateCookie, cookieErr := r.Cookie(oauthStateCookie)
+	returnTo := "/"
+	if cookie, err := r.Cookie(returnToCookie); err == nil {
+		returnTo = safeReturnTo(cookie.Value)
+	}
 	http.SetCookie(w, &http.Cookie{Name: oauthStateCookie, Path: "/auth/callback", Value: "", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode, MaxAge: -1})
+	http.SetCookie(w, &http.Cookie{Name: returnToCookie, Path: "/auth/callback", Value: "", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode, MaxAge: -1})
 	if cookieErr != nil || subtle.ConstantTimeCompare([]byte(state), []byte(stateCookie.Value)) != 1 {
 		http.Error(w, "invalid OAuth state", http.StatusForbidden)
 		return
@@ -122,7 +129,24 @@ func (s *Server) callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: session, Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode, MaxAge: int((24 * time.Hour).Seconds())})
-	http.Redirect(w, r, s.config.PublicURL.String(), http.StatusFound)
+	http.Redirect(w, r, s.config.PublicURL.ResolveReference(&url.URL{Path: returnTo}).String(), http.StatusFound)
+}
+
+func safeReturnTo(value string) string {
+	parsed, err := url.ParseRequestURI(value)
+	if err != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "/"
+	}
+	mapID := strings.TrimPrefix(parsed.Path, "/maps/")
+	if !strings.HasPrefix(parsed.Path, "/maps/") || len(mapID) != 32 {
+		return "/"
+	}
+	for _, character := range mapID {
+		if character < '0' || character > '9' && character < 'a' || character > 'f' {
+			return "/"
+		}
+	}
+	return parsed.Path
 }
 
 func decodeDiscord(response *http.Response, value any) error {

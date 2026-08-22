@@ -1,2 +1,8 @@
+.env
 web/dist/
 web/*.tsbuildinfo
+MAP_GENERATION.md
+PLAN.md
+THIRD_PARTY_NOTICES.md
+data/
+maps/
