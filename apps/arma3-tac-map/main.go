@@ -27,6 +27,10 @@ func newServer(config Config, store *Store) *Server {
 	return &Server{config: config, store: store, httpClient: &http.Client{Timeout: 10 * time.Second}, rooms: map[string]*room{}}
 }
 
+func newHTTPServer(config Config, handler http.Handler) *http.Server {
+	return &http.Server{Addr: config.ListenAddress, Handler: handler, ReadTimeout: 30 * time.Minute, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
+}
+
 func (s *Server) frontend() http.Handler {
 	directory, err := fs.Sub(frontendFiles, "web/embed")
 	if err != nil {
@@ -59,7 +63,7 @@ func main() {
 	if err := cleanupTerrainArtifacts(config.MapsPath); err != nil {
 		log.Printf("terrain cleanup failed")
 	}
-	httpServer := &http.Server{Addr: config.ListenAddress, Handler: server.routes(), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
+	httpServer := newHTTPServer(config, server.routes())
 	log.Printf("listening on %s", config.ListenAddress)
 	log.Fatal(httpServer.ListenAndServe())
 }

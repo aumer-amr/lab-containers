@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -28,7 +29,7 @@ func (s *Server) routes() http.Handler {
 	protected.HandleFunc("GET /api/worlds", s.worlds)
 	protected.HandleFunc("GET /api/worlds/{world}/assets/{asset...}", s.worldAsset)
 	protected.HandleFunc("GET /api/worlds/{world}/previews/{style}", s.worldPreview)
-	protected.HandleFunc("PUT /api/worlds/{world}/previews/{style}", s.worldPreview)
+	protected.HandleFunc("PUT /api/worlds/{world}/previews/{style}", adminOnly(s.worldPreview))
 	protected.HandleFunc("GET /api/admin/worlds", adminOnly(s.adminWorlds))
 	protected.HandleFunc("POST /api/admin/worlds", adminOnly(s.adminWorlds))
 	protected.HandleFunc("GET /api/admin/worlds/{world}", adminOnly(s.adminWorldByName))
@@ -55,7 +56,7 @@ func (s *Server) routes() http.Handler {
 	mux.Handle("/api/", s.authenticate(s.checkOrigin(protected)))
 	mux.Handle("POST /auth/logout", s.authenticate(s.checkOrigin(protected)))
 	mux.Handle("/", s.frontend())
-	return securityHeaders(mux)
+	return securityHeaders(s.config.PublicURL, mux)
 }
 
 func adminOnly(next http.HandlerFunc) http.HandlerFunc {
@@ -88,11 +89,20 @@ func (s *Server) withAvailableTerrain(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-func securityHeaders(next http.Handler) http.Handler {
+func securityHeaders(publicURL *url.URL, next http.Handler) http.Handler {
+	websocketScheme := "ws"
+	if publicURL.Scheme == "https" {
+		websocketScheme = "wss"
+	}
+	websocketOrigin := (&url.URL{Scheme: websocketScheme, Host: publicURL.Host}).String()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "same-origin")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; connect-src 'self' ws: wss:; img-src 'self' data: blob: https://cdn.discordapp.com; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; connect-src 'self' "+websocketOrigin+"; frame-ancestors 'none'; img-src 'self' data: blob: https://cdn.discordapp.com; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:")
+		w.Header().Set("Permissions-Policy", "camera=(), geolocation=(), microphone=()")
+		if publicURL.Scheme == "https" {
+			w.Header().Set("Strict-Transport-Security", "max-age=31536000")
+		}
 		next.ServeHTTP(w, r)
 	})
 }
@@ -374,6 +384,7 @@ func (s *Server) aetExport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
 	w.Write([]byte(output))
 }
 
@@ -421,6 +432,7 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, value any) bool {
 	return true
 }
 func writeJSON(w http.ResponseWriter, status int, value any) {
+	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(value)

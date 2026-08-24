@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 )
 
 func testStore(t *testing.T) *Store {
@@ -15,6 +16,37 @@ func testStore(t *testing.T) *Store {
 	}
 	t.Cleanup(func() { store.close() })
 	return store
+}
+
+func TestAuthenticationStorageExpiresAndCleansUp(t *testing.T) {
+	store := testStore(t)
+	ctx := context.Background()
+	if _, err := store.db.ExecContext(ctx, `INSERT INTO oauth_states(hash,expires_at) VALUES(?,?)`, []byte("expired"), time.Now().Add(-time.Minute).Unix()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.createOAuthState(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var expired int
+	if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM oauth_states WHERE expires_at<=?`, time.Now().Unix()).Scan(&expired); err != nil || expired != 0 {
+		t.Fatalf("expired OAuth states=%d error=%v", expired, err)
+	}
+	user := testUser(t, store, "member", false)
+	if _, err := store.db.ExecContext(ctx, `INSERT INTO sessions(hash,user_id,expires_at) VALUES(?,?,?)`, []byte("expired"), user.ID, time.Now().Add(-time.Minute).Unix()); err != nil {
+		t.Fatal(err)
+	}
+	before := time.Now().Add(sessionDuration - time.Second).Unix()
+	token, err := store.createSession(ctx, user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var expiresAt int64
+	if err := store.db.QueryRowContext(ctx, `SELECT expires_at FROM sessions WHERE hash=?`, tokenHash(token)).Scan(&expiresAt); err != nil || expiresAt < before {
+		t.Fatalf("session expiry=%d error=%v", expiresAt, err)
+	}
+	if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sessions WHERE expires_at<=?`, time.Now().Unix()).Scan(&expired); err != nil || expired != 0 {
+		t.Fatalf("expired sessions=%d error=%v", expired, err)
+	}
 }
 func testUser(t *testing.T, store *Store, id string, admin bool) User {
 	t.Helper()

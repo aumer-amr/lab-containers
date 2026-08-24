@@ -118,7 +118,7 @@ func TestOAuthSessionAndExpiry(t *testing.T) {
 		t.Fatalf("status=%d body=%s", callback.Code, callback.Body.String())
 	}
 	cookie := cookieNamed(callback.Result().Cookies(), sessionCookie)
-	if cookie == nil || !cookie.HttpOnly || !cookie.Secure || cookie.SameSite != http.SameSiteLaxMode {
+	if cookie == nil || !cookie.HttpOnly || !cookie.Secure || cookie.SameSite != http.SameSiteLaxMode || cookie.MaxAge != int(sessionDuration.Seconds()) {
 		t.Fatalf("bad session cookie: %#v", callback.Result().Cookies())
 	}
 	if got := callback.Header().Get("Location"); got != "https://maps.example.test/maps/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" {
@@ -180,6 +180,7 @@ func TestEveryAPIRouteRequiresAuthentication(t *testing.T) {
 	}{
 		{http.MethodGet, "/api/me"},
 		{http.MethodGet, "/api/worlds"},
+		{http.MethodPut, "/api/worlds/altis/previews/default"},
 		{http.MethodGet, "/api/admin/worlds"},
 		{http.MethodPost, "/api/admin/worlds"},
 		{http.MethodGet, "/api/admin/worlds/altis"},
@@ -228,6 +229,7 @@ func TestAdminAPIsRejectNonAdmins(t *testing.T) {
 		{http.MethodGet, "/api/admin/worlds/altis"},
 		{http.MethodDelete, "/api/admin/worlds/altis"},
 		{http.MethodPost, "/api/admin/worlds/altis/previews/complete"},
+		{http.MethodPut, "/api/worlds/altis/previews/default"},
 		{http.MethodDelete, "/api/trash/missing"},
 		{http.MethodPost, "/api/maps/missing/trash/restore"},
 		{http.MethodGet, "/api/maps/missing/revisions"},

@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"encoding/binary"
+	"hash/crc32"
 	"image"
 	"image/png"
 	"net/http"
@@ -43,6 +45,17 @@ func TestWorldPreviewCacheStoresValidatedPNGOutsideTerrain(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(directory, "previews", "topo.png")); !os.IsNotExist(err) {
 		t.Fatal("preview modified terrain directory")
+	}
+	oversized := append([]byte(nil), body.Bytes()...)
+	binary.BigEndian.PutUint32(oversized[16:20], 100_000)
+	binary.BigEndian.PutUint32(oversized[20:24], 100_000)
+	binary.BigEndian.PutUint32(oversized[29:33], crc32.ChecksumIEEE(oversized[12:29]))
+	response = httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodPut, "/", bytes.NewReader(oversized))
+	request.Header.Set("Content-Type", "image/png")
+	serveWorldPreview(mapsRoot, cacheRoot, "altis", "topo", response, request)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("oversized dimensions status=%d", response.Code)
 	}
 	response = httptest.NewRecorder()
 	serveWorldPreview(mapsRoot, cacheRoot, "altis", "topo", response, httptest.NewRequest(http.MethodGet, "/", nil))

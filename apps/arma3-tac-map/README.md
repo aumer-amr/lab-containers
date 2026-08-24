@@ -20,7 +20,7 @@ DISCORD_GUILD_ID=...
 DISCORD_ALLOWED_ROLE_ID=...
 ```
 
-The OAuth scopes are `identify guilds.members.read`. Every admitted user must hold `DISCORD_ALLOWED_ROLE_ID`; IDs in `ADMIN_DISCORD_USER_IDS` still need that role. Admin IDs are comma-separated.
+The OAuth scopes are `identify guilds.members.read`. Every admitted user must hold `DISCORD_ALLOWED_ROLE_ID`; IDs in `ADMIN_DISCORD_USER_IDS` still need that role. Admin IDs are comma-separated. Sessions last one hour, so Discord role changes take effect on the next login within that window.
 
 Optional variables:
 
@@ -52,11 +52,11 @@ Mount OCAP2-generated assets read-write at `/maps`. Each complete world uses:
 
 GDAL2Tiles raster exports are also supported. Keep their numeric `{z}/{x}/{y}.png` folders beside `map.json`; optional terrain variants use the existing `colorRelief`, `topoDark`, and `topoRelief` directories. The manifest's `maxZoom` and `hasTopo*` flags determine which styles are offered.
 
-For the map-style picker, optionally add a zoomed-out whole-map image at `previews/<style>.png` for each style. When vector-style thumbnails are missing, the first editor renders them in MapLibre and stores the resulting 320×240 PNGs in `PREVIEW_CACHE_PATH`; later editors reuse that disposable cache. Raster styles fall back to their zoom-zero tile.
+For the map-style picker, optionally add a zoomed-out whole-map image at `previews/<style>.png` for each style. When vector-style thumbnails are missing, an administrator renders them in MapLibre and stores the resulting 320×240 PNGs in `PREVIEW_CACHE_PATH`; later editors reuse that disposable cache. Raster styles fall back to their zoom-zero tile.
 
 `map.json` needs positive `worldSize`, `world_size`, or `size`. A world is offered for new plans only when it has at least one complete MapLibre/PMTiles style or raster tile pyramid. Asset names may contain letters, numbers, dots, underscores, and hyphens. Terrain generation and conversion remain external to this application.
 
-Administrators listed in `ADMIN_DISCORD_USER_IDS` can open **Manage terrains** at `/admin/maps`. Upload one ZIP containing exactly one top-level terrain directory; that directory name becomes the world ID. Existing IDs must be deleted before re-upload. Uploads are synchronous and limited to 5 GiB compressed by default (`MAP_UPLOAD_MAX_BYTES`), 6 GiB extracted, and 70,000 files. `/tmp` holds the incoming ZIP and extraction workspace, so it must use disk-backed writable storage with enough capacity. After a vector terrain installs, the administrator's browser renders and saves every style preview before the terrain becomes available. Interrupted or failed preview generation leaves it unavailable with a retry action on the administration page. Raster terrains use their existing tiles and need no rendered preview step.
+Administrators listed in `ADMIN_DISCORD_USER_IDS` can open **Manage terrains** at `/admin/maps`. Upload one ZIP containing exactly one top-level terrain directory; that directory name becomes the world ID. Existing IDs must be deleted before re-upload. Uploads are synchronous, must complete within 30 minutes, and are limited to 5 GiB compressed by default (`MAP_UPLOAD_MAX_BYTES`), 6 GiB extracted, and 70,000 files. `/tmp` holds the incoming ZIP and extraction workspace, so it must use disk-backed writable storage with enough capacity. After a vector terrain installs, the administrator's browser renders and saves every style preview before the terrain becomes available. Interrupted or failed preview generation leaves it unavailable with a retry action on the administration page. Raster terrains use their existing tiles and need no rendered preview step.
 
 Installation validates the bundle in `/tmp`, copies it to an app-owned hidden staging directory on `/maps`, then atomically makes it visible. Failed workspaces are removed; narrowly named abandoned staging/deletion directories are retried at startup. Deleting terrain is irreversible, removes its generated preview cache, and moves every active tactical map using it to trash. Tactical-map records remain stored; after re-uploading the same world ID, an administrator may restore them from trash.
 

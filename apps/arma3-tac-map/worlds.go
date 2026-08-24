@@ -254,8 +254,12 @@ func serveWorldPreview(mapsRoot, cacheRoot, worldName, style string, w http.Resp
 		http.Error(w, "preview is too large", http.StatusRequestEntityTooLarge)
 		return
 	}
-	image, err := png.Decode(bytes.NewReader(raw))
-	if err != nil || image.Bounds().Dx() != 320 || image.Bounds().Dy() != 240 {
+	config, err := png.DecodeConfig(bytes.NewReader(raw))
+	if err != nil || config.Width != 320 || config.Height != 240 {
+		http.Error(w, "preview must be a 320x240 PNG", http.StatusBadRequest)
+		return
+	}
+	if _, err := png.Decode(bytes.NewReader(raw)); err != nil {
 		http.Error(w, "preview must be a 320x240 PNG", http.StatusBadRequest)
 		return
 	}

@@ -16,6 +16,7 @@ const (
 	sessionCookie    = "tacmap_session"
 	oauthStateCookie = "tacmap_oauth_state"
 	returnToCookie   = "tacmap_return_to"
+	sessionDuration  = time.Hour
 )
 
 type userContextKey struct{}
@@ -128,7 +129,7 @@ func (s *Server) callback(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: session, Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode, MaxAge: int((24 * time.Hour).Seconds())})
+	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: session, Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode, MaxAge: int(sessionDuration.Seconds())})
 	http.Redirect(w, r, s.config.PublicURL.ResolveReference(&url.URL{Path: returnTo}).String(), http.StatusFound)
 }
 

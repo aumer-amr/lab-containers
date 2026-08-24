@@ -1,6 +1,6 @@
 module github.com/aumer-amr/lab-containers/apps/arma3-tac-map
 
-go 1.24.0
+go 1.26.7
 
 require (
 	github.com/coder/websocket v1.8.15

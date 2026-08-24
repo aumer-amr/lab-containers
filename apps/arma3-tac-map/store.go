@@ -30,6 +30,8 @@ var (
 
 type Store struct{ db *sql.DB }
 
+const maxPendingOAuthStates = 10_000
+
 func openStore(path string) (*Store, error) {
 	dsn := path
 	if path != ":memory:" && !strings.HasPrefix(path, "file:") {
@@ -115,8 +117,26 @@ func (s *Store) createOAuthState(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	_, err = s.db.ExecContext(ctx, `INSERT INTO oauth_states(hash, expires_at) VALUES(?,?)`, tokenHash(state), time.Now().Add(10*time.Minute).Unix())
-	return state, err
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback()
+	now := time.Now()
+	if _, err = tx.ExecContext(ctx, `DELETE FROM oauth_states WHERE expires_at<=?`, now.Unix()); err != nil {
+		return "", err
+	}
+	var count int
+	if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM oauth_states`).Scan(&count); err != nil {
+		return "", err
+	}
+	if count >= maxPendingOAuthStates {
+		return "", errConflict
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO oauth_states(hash, expires_at) VALUES(?,?)`, tokenHash(state), now.Add(10*time.Minute).Unix()); err != nil {
+		return "", err
+	}
+	return state, tx.Commit()
 }
 
 func (s *Store) consumeOAuthState(ctx context.Context, state string) error {
@@ -140,7 +160,11 @@ func (s *Store) createSession(ctx context.Context, userID string) (string, error
 	if err != nil {
 		return "", err
 	}
-	_, err = s.db.ExecContext(ctx, `INSERT INTO sessions(hash,user_id,expires_at) VALUES(?,?,?)`, tokenHash(token), userID, time.Now().Add(24*time.Hour).Unix())
+	now := time.Now()
+	if _, err = s.db.ExecContext(ctx, `DELETE FROM sessions WHERE expires_at<=?`, now.Unix()); err != nil {
+		return "", err
+	}
+	_, err = s.db.ExecContext(ctx, `INSERT INTO sessions(hash,user_id,expires_at) VALUES(?,?,?)`, tokenHash(token), userID, now.Add(sessionDuration).Unix())
 	return token, err
 }
 
