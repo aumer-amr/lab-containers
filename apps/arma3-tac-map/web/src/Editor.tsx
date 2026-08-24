@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { api } from './api'
 import { useCollaboration } from './collaboration'
 import { ExportDialog } from './ExportDialog'
-import { MapCanvas, renderStylePreview } from './MapCanvas'
+import { MapCanvas } from './MapCanvas'
 import { MarkerDialog } from './MarkerDialog'
 import { canManageMap, canRestore, editingEnabled, flattenAnnotations, initialVisibility, visibleLayerIDs } from './state'
 import type { Annotation, Point, Revision, TacMap, User, World } from './types'
@@ -34,7 +34,7 @@ function revisionDetails(revision: Revision) {
   return { title: revision.kind.replace(/[._]/g, ' '), text: '' }
 }
 
-export function Editor({ initial, user, world, onBack }: { initial: TacMap; user: User; world?: World; onBack(): void }) {
+export function Editor({ initial, user, world, onBack, onTerrainUnavailable }: { initial: TacMap; user: User; world?: World; onBack(): void; onTerrainUnavailable?(): void }) {
   const collaboration = useCollaboration(initial.id, initial)
   const map = collaboration.map ?? initial
   const [visibility, setVisibility] = useState(() => initialVisibility(initial.layers))
@@ -53,8 +53,7 @@ export function Editor({ initial, user, world, onBack }: { initial: TacMap; user
   const [sidebarTab, setSidebarTab] = useState<'draw' | 'notes' | 'settings' | 'history' | null>('draw')
   const [exporting, setExporting] = useState(false)
   const [revisions, setRevisions] = useState<Revision[]>([])
-  const [previewBuild, setPreviewBuild] = useState<{ done: number; total: number; checking: boolean } | null>(() => world?.format === 'pmtiles' && world.styles.length > 1 ? { done: 0, total: world.styles.length, checking: true } : null)
-  const [previewVersion, setPreviewVersion] = useState(0)
+  useEffect(() => { if (!map.worldAvailable) onTerrainUnavailable?.() }, [map.worldAvailable, onTerrainUnavailable])
   useEffect(() => { setVisibility((current) => ({ ...initialVisibility(map.layers), ...current })); if (!map.layers.some(({ id }) => id === layerID)) setLayerID(map.layers[0]?.id ?? '') }, [map.layers, layerID])
   const manager = canManageMap(user, map)
   const admin = canRestore(user)
@@ -79,42 +78,13 @@ export function Editor({ initial, user, world, onBack }: { initial: TacMap; user
     const frame = requestAnimationFrame(() => window.dispatchEvent(new Event('resize')))
     return () => cancelAnimationFrame(frame)
   }, [sidebarTab])
-  useEffect(() => {
-    if (!world || world.format !== 'pmtiles' || world.styles.length < 2) return
-    let active = true
-    void (async () => {
-      try {
-        const available = await Promise.all(world.styles.map((name) => api.worldPreviewExists(world.name, name)))
-        const missing = world.styles.filter((_, index) => !available[index])
-        if (!active) return
-        if (!missing.length) { setPreviewBuild(null); return }
-        setPreviewBuild({ done: 0, total: missing.length, checking: false })
-        let done = 0
-        for (const name of missing) {
-          try {
-            const preview = await renderStylePreview(world, name)
-            if (!active) return
-            await api.saveWorldPreview(world.name, name, preview)
-          } catch (error) {
-            console.warn(`Could not create ${world.name}/${name} preview`, error)
-          }
-          if (active) setPreviewBuild({ done: ++done, total: missing.length, checking: false })
-        }
-        if (active) { setPreviewVersion(Date.now()); setPreviewBuild(null) }
-      } catch (error) {
-        console.warn(`Could not check ${world.name} previews`, error)
-        if (active) setPreviewBuild(null)
-      }
-    })()
-    return () => { active = false }
-  }, [world])
 
   return <main className={`editor-shell${sidebarTab ? ' sidebar-open' : ''}`}>
     <header className="editor-header">
       <button className="back-button" onClick={onBack} aria-label="Back to maps">← <span>Maps</span></button>
       {world && <details className="style-switcher" onMouseEnter={(event) => { event.currentTarget.open = true }} onMouseLeave={(event) => { event.currentTarget.open = false }}>
-        <summary aria-label={`Map style: ${styleLabel(style)}`}><StylePreview world={world} style={style} label="Map style" version={previewVersion} /></summary>
-        <div className="style-options">{world.styles.map((name) => <button type="button" className={name === style ? 'active' : ''} aria-pressed={name === style} key={name} onClick={() => setStyle(name)}><StylePreview world={world} style={name} label={styleLabel(name)} version={previewVersion} /></button>)}</div>
+        <summary aria-label={`Map style: ${styleLabel(style)}`}><StylePreview world={world} style={style} label="Map style" /></summary>
+        <div className="style-options">{world.styles.map((name) => <button type="button" className={name === style ? 'active' : ''} aria-pressed={name === style} key={name} onClick={() => setStyle(name)}><StylePreview world={world} style={name} label={styleLabel(name)} /></button>)}</div>
       </details>}
       <div className="editor-title"><small>{map.world} · v{map.version}</small><h1>{map.name}</h1></div>
       <span className={`connection ${collaboration.connected ? 'online' : 'offline'}`}><i />{collaboration.connected ? 'Live' : 'Offline'}</span>
@@ -155,7 +125,6 @@ export function Editor({ initial, user, world, onBack }: { initial: TacMap; user
     </aside>
 
     {world && map.worldAvailable ? <MapCanvas world={world} style={style} categories={categories} annotations={annotations} cursors={collaboration.cursors} editing={editing} activeTool={activeTool} layerID={layerID} color={color} icon={icon} label={label} rotation={rotation} scale={scale} onCreate={collaboration.create} onUpdate={collaboration.update} onDelete={collaboration.remove} onPlaceMarker={setPlacingMarkerAt} onEditMarker={(annotation) => { setActiveTool(null); setPlacingMarkerAt(null); setEditingMarker(annotation) }} onCursor={collaboration.cursor} /> : <section className="missing-world"><span className="empty-crosshair" aria-hidden="true" /><h2>Terrain unavailable</h2><p>Editing is disabled. Export remains available.</p></section>}
-    {previewBuild && <section className="preview-loading" role="status" aria-live="polite"><div><small>Preparing terrain</small><strong>{previewBuild.checking ? 'Checking map previews' : 'Creating map previews'}</strong><progress max={previewBuild.total} value={previewBuild.done} /><span>{previewBuild.checking ? 'Checking cache…' : `${previewBuild.done} of ${previewBuild.total}`}</span></div></section>}
 
     <aside id="notes-panel" className="sidebar notes-panel" aria-label="Map notes" hidden={sidebarTab !== 'notes'}>
       <div className="notes-heading"><h2>Notes</h2><span>{notes.length}</span></div>

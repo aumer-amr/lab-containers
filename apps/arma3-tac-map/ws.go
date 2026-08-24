@@ -86,8 +86,10 @@ func (s *Server) closeRoom(id string) {
 func (s *Server) webSocket(w http.ResponseWriter, r *http.Request) {
 	user, _ := contextUser(r.Context())
 	mapID := r.PathValue("map")
+	s.terrainMu.RLock()
 	snapshot, err := s.getMap(r.Context(), mapID)
 	if err != nil || snapshot.Deleted || !s.worldExists(snapshot.World) {
+		s.terrainMu.RUnlock()
 		if err == nil {
 			err = errForbidden
 		}
@@ -96,6 +98,7 @@ func (s *Server) webSocket(w http.ResponseWriter, r *http.Request) {
 	}
 	connection, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
 	if err != nil {
+		s.terrainMu.RUnlock()
 		return
 	}
 	connection.SetReadLimit(1 << 20)
@@ -103,6 +106,7 @@ func (s *Server) webSocket(w http.ResponseWriter, r *http.Request) {
 	c := &client{user: user, send: make(chan socketMessage, 32), cancel: cancel}
 	room := s.getRoom(mapID)
 	room.add(c)
+	s.terrainMu.RUnlock()
 	defer func() {
 		cancel()
 		room.remove(c)
@@ -145,7 +149,15 @@ func (s *Server) webSocket(w http.ResponseWriter, r *http.Request) {
 				annotation = *message.Annotation
 			}
 			room.mutationMu.Lock()
-			version, err := s.store.mutateAnnotation(ctx, user, mapID, message.Operation, &annotation, message.ID, 0)
+			s.terrainMu.RLock()
+			available := s.worldExists(snapshot.World)
+			var version int64
+			if available {
+				version, err = s.store.mutateAnnotation(ctx, user, mapID, message.Operation, &annotation, message.ID, 0)
+			} else {
+				err = errConflict
+			}
+			s.terrainMu.RUnlock()
 			if err != nil {
 				room.mutationMu.Unlock()
 				c.send <- socketMessage{Type: "error", Message: publicError(err)}

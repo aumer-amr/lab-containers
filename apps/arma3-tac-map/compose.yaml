@@ -12,9 +12,9 @@ services:
       DISCORD_GUILD_ID: ${DISCORD_GUILD_ID}
       DISCORD_ALLOWED_ROLE_ID: ${DISCORD_ALLOWED_ROLE_ID}
       ADMIN_DISCORD_USER_IDS: ${ADMIN_DISCORD_USER_IDS:-}
+      MAP_UPLOAD_MAX_BYTES: ${MAP_UPLOAD_MAX_BYTES:-5368709120}
     volumes:
       - ./data:/data
-      - ./maps:/maps:ro
+      - ./maps:/maps
+      - ./tmp:/tmp
     read_only: true
-    tmpfs:
-      - /tmp

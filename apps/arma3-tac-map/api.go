@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -27,22 +29,27 @@ func (s *Server) routes() http.Handler {
 	protected.HandleFunc("GET /api/worlds/{world}/assets/{asset...}", s.worldAsset)
 	protected.HandleFunc("GET /api/worlds/{world}/previews/{style}", s.worldPreview)
 	protected.HandleFunc("PUT /api/worlds/{world}/previews/{style}", s.worldPreview)
+	protected.HandleFunc("GET /api/admin/worlds", adminOnly(s.adminWorlds))
+	protected.HandleFunc("POST /api/admin/worlds", adminOnly(s.adminWorlds))
+	protected.HandleFunc("GET /api/admin/worlds/{world}", adminOnly(s.adminWorldByName))
+	protected.HandleFunc("DELETE /api/admin/worlds/{world}", adminOnly(s.adminWorldByName))
+	protected.HandleFunc("POST /api/admin/worlds/{world}/previews/complete", adminOnly(s.completeWorldPreviews))
 	protected.HandleFunc("GET /api/assets/fonts/{asset...}", s.sharedAsset)
 	protected.HandleFunc("GET /api/assets/sprites/{asset...}", s.sharedSprite)
 	protected.HandleFunc("GET /api/maps", s.maps)
-	protected.HandleFunc("POST /api/maps", s.maps)
+	protected.HandleFunc("POST /api/maps", s.withAvailableTerrain(s.maps))
 	protected.HandleFunc("GET /api/trash", adminOnly(s.trash))
-	protected.HandleFunc("DELETE /api/trash/{map}", adminOnly(s.purgeTrash))
+	protected.HandleFunc("DELETE /api/trash/{map}", adminOnly(s.withAvailableTerrain(s.purgeTrash)))
 	protected.HandleFunc("GET /api/maps/{map}", s.mapByID)
-	protected.HandleFunc("PATCH /api/maps/{map}", s.mapByID)
-	protected.HandleFunc("DELETE /api/maps/{map}", s.mapByID)
-	protected.HandleFunc("POST /api/maps/{map}/trash/restore", adminOnly(s.restoreTrash))
-	protected.HandleFunc("POST /api/maps/{map}/layers", s.layers)
-	protected.HandleFunc("PATCH /api/maps/{map}/layers/{layer}", s.layerByID)
-	protected.HandleFunc("DELETE /api/maps/{map}/layers/{layer}", s.layerByID)
-	protected.HandleFunc("PUT /api/maps/{map}/layers/order", s.layerOrder)
+	protected.HandleFunc("PATCH /api/maps/{map}", s.withAvailableTerrain(s.mapByID))
+	protected.HandleFunc("DELETE /api/maps/{map}", s.withAvailableTerrain(s.mapByID))
+	protected.HandleFunc("POST /api/maps/{map}/trash/restore", adminOnly(s.withAvailableTerrain(s.restoreTrash)))
+	protected.HandleFunc("POST /api/maps/{map}/layers", s.withAvailableTerrain(s.layers))
+	protected.HandleFunc("PATCH /api/maps/{map}/layers/{layer}", s.withAvailableTerrain(s.layerByID))
+	protected.HandleFunc("DELETE /api/maps/{map}/layers/{layer}", s.withAvailableTerrain(s.layerByID))
+	protected.HandleFunc("PUT /api/maps/{map}/layers/order", s.withAvailableTerrain(s.layerOrder))
 	protected.HandleFunc("GET /api/maps/{map}/revisions", adminOnly(s.revisionList))
-	protected.HandleFunc("POST /api/maps/{map}/revisions/{revision}/restore", adminOnly(s.restoreHistory))
+	protected.HandleFunc("POST /api/maps/{map}/revisions/{revision}/restore", adminOnly(s.withAvailableTerrain(s.restoreHistory)))
 	protected.HandleFunc("POST /api/maps/{map}/exports/aet", s.aetExport)
 	protected.HandleFunc("GET /api/maps/{map}/ws", s.webSocket)
 	mux.Handle("/api/", s.authenticate(s.checkOrigin(protected)))
@@ -62,6 +69,25 @@ func adminOnly(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+func (s *Server) withAvailableTerrain(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		s.terrainMu.RLock()
+		defer s.terrainMu.RUnlock()
+		if mapID := r.PathValue("map"); mapID != "" {
+			value, err := s.store.getMap(r.Context(), mapID)
+			if err != nil {
+				writeError(w, err)
+				return
+			}
+			if !s.worldExists(value.World) {
+				http.Error(w, "terrain unavailable", http.StatusConflict)
+				return
+			}
+		}
+		next(w, r)
+	}
+}
+
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -73,11 +99,18 @@ func securityHeaders(next http.Handler) http.Handler {
 
 func (s *Server) ready(w http.ResponseWriter, r *http.Request) {
 	if err := s.store.db.PingContext(r.Context()); err != nil {
+		slog.Warn("readiness check failed", "component", "database", "error", "unavailable")
 		http.Error(w, "database unavailable", http.StatusServiceUnavailable)
 		return
 	}
 	if err := mapsReady(s.config.MapsPath); err != nil {
+		slog.Warn("readiness check failed", "component", "maps", "error", "not writable")
 		http.Error(w, "maps volume unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	if err := mapsReady(os.TempDir()); err != nil {
+		slog.Warn("readiness check failed", "component", "temporary storage", "error", "not writable")
+		http.Error(w, "temporary storage unavailable", http.StatusServiceUnavailable)
 		return
 	}
 	w.Header().Set("Content-Type", "text/plain")
@@ -345,7 +378,7 @@ func (s *Server) aetExport(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) worldExists(name string) bool {
-	if !safeWorldName.MatchString(name) {
+	if !safeWorldName.MatchString(name) || !worldPreviewsReady(s.config.MapsPath, name) {
 		return false
 	}
 	_, err := inspectWorld(s.config.MapsPath, name)

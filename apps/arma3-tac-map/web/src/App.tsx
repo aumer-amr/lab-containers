@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { AdminTerrains } from './AdminTerrains'
 import { api } from './api'
 import { Editor } from './Editor'
 import type { TacMap, User, World } from './types'
@@ -28,6 +29,7 @@ export function App() {
   const [worlds, setWorlds] = useState<World[]>([])
   const [trash, setTrash] = useState<TacMap[]>([])
   const [selected, setSelected] = useState<TacMap | null>(null)
+  const [adminPage, setAdminPage] = useState(location.pathname === '/admin/maps')
   const [page, setPage] = useState(0)
   const [error, setError] = useState('')
   const openMap = async (id: string, updateURL = true) => {
@@ -38,6 +40,7 @@ export function App() {
   }
   const load = () => Promise.all([api.me(), api.maps(), api.worlds()])
     .then(async ([me, mapList, worldList]) => {
+      const wantsAdmin = location.pathname === '/admin/maps'
       const directMapID = mapIDFromPath(location.pathname)
       let directMap: TacMap | null = null
       if (directMapID) {
@@ -50,6 +53,11 @@ export function App() {
       setWorlds(worldList)
       setSelected(directMap)
       setTrash(me.admin ? await api.trash() : [])
+      if (wantsAdmin && !me.admin) {
+        history.replaceState(null, '', '/')
+        setAdminPage(false)
+        setError('Administrator access is required to manage terrains.')
+      } else setAdminPage(wantsAdmin)
     })
     .catch(() => setUser(null))
 
@@ -74,12 +82,16 @@ export function App() {
       <small>Discord unit membership required</small>
     </section>
   </main>
-  if (selected) return <Editor initial={selected} user={user} world={worlds.find(({ name }) => name === selected.world)} onBack={() => { history.pushState(null, '', '/'); setSelected(null); load() }} />
+  if (adminPage && user.admin) return <AdminTerrains onBack={() => { history.pushState(null, '', '/'); setAdminPage(false) }} refreshCatalog={async () => {
+    const [mapList, worldList, trashList] = await Promise.all([api.maps(), api.worlds(), api.trash()])
+    setMaps(mapList); setWorlds(worldList); setTrash(trashList)
+  }} />
+  if (selected) return <Editor initial={selected} user={user} world={worlds.find(({ name }) => name === selected.world)} onBack={() => { history.pushState(null, '', '/'); setSelected(null); load() }} onTerrainUnavailable={() => { history.pushState(null, '', '/'); setSelected(null); setError('Terrain became unavailable. The editor was closed.'); load() }} />
 
   return <main className="dashboard">
     <header className="dashboard-header">
       <a className="brand" href="/" aria-label="Arma 3 Tactical Map home"><span className="brand-mark" aria-hidden="true" /><span>Arma 3<strong>Tactical Map</strong></span></a>
-      <div className="user-menu">{user.avatar ? <img className="avatar" src={`https://cdn.discordapp.com/avatars/${encodeURIComponent(user.id)}/${encodeURIComponent(user.avatar)}.png?size=64`} alt="" /> : <span className="avatar" aria-hidden="true">{user.displayName.charAt(0).toUpperCase()}</span>}<span><strong>{user.displayName}</strong><small>{user.admin ? 'Administrator' : 'Planner'}</small></span><button className="sign-out" onClick={async () => { try { await api.logout(); setUser(null) } catch (cause) { setError(cause instanceof Error ? cause.message : 'Sign out failed') } }}>Sign out</button></div>
+      <div className="user-menu">{user.avatar ? <img className="avatar" src={`https://cdn.discordapp.com/avatars/${encodeURIComponent(user.id)}/${encodeURIComponent(user.avatar)}.png?size=64`} alt="" /> : <span className="avatar" aria-hidden="true">{user.displayName.charAt(0).toUpperCase()}</span>}<span><strong>{user.displayName}</strong><small>{user.admin ? 'Administrator' : 'Planner'}</small></span>{user.admin && <button className="sign-out" onClick={() => { history.pushState(null, '', '/admin/maps'); setAdminPage(true) }}>Manage terrains</button>}<button className="sign-out" onClick={async () => { try { await api.logout(); setUser(null) } catch (cause) { setError(cause instanceof Error ? cause.message : 'Sign out failed') } }}>Sign out</button></div>
     </header>
 
     <section className="dashboard-intro">
@@ -116,6 +128,6 @@ export function App() {
       </button>
     })}</section>{pageCount > 1 && <nav className="map-pagination" aria-label="Map pages"><button disabled={page === 0} onClick={() => setPage((value) => value - 1)}>← Previous</button><span>Page {page + 1} of {pageCount}</span><button disabled={page === pageCount - 1} onClick={() => setPage((value) => value + 1)}>Next →</button></nav>}</> : <section className="empty-state"><span className="empty-crosshair" aria-hidden="true" /><h2>No maps yet</h2><p>Create your first tactical map above.</p></section>}
 
-    {user.admin && trash.length > 0 && <section className="trash"><div className="section-heading"><div><p className="eyebrow">Administration</p><h2>Trash</h2></div><span>{trash.length}</span></div>{trash.map((map) => <div className="trash-row" key={map.id}><span><strong>{map.name}</strong><small>{map.world}</small></span><div className="trash-actions"><button onClick={async () => { await api.restoreTrash(map.id); load() }}>Restore</button><button className="danger quiet" aria-label={`Delete ${map.name} permanently`} onClick={async () => { if (confirm(`Permanently delete "${map.name}"? This cannot be undone.`)) { await api.purgeTrash(map.id); load() } }}>Delete permanently</button></div></div>)}</section>}
+    {user.admin && trash.length > 0 && <section className="trash"><div className="section-heading"><div><p className="eyebrow">Administration</p><h2>Trash</h2></div><span>{trash.length}</span></div>{trash.map((map) => <div className="trash-row" key={map.id}><span><strong>{map.name}</strong><small>{map.world}</small></span><div className="trash-actions"><button disabled={!map.worldAvailable} title={map.worldAvailable ? undefined : 'Terrain is not available'} onClick={async () => { await api.restoreTrash(map.id); load() }}>Restore</button><button className="danger quiet" aria-label={`Delete ${map.name} permanently`} onClick={async () => { if (confirm(`Permanently delete "${map.name}"? This cannot be undone.`)) { await api.purgeTrash(map.id); load() } }}>Delete permanently</button></div></div>)}</section>}
   </main>
 }

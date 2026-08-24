@@ -186,3 +186,39 @@ func TestWebSocketRejectsUnauthorizedOrigin(t *testing.T) {
 		t.Fatalf("response=%v error=%v", response, err)
 	}
 }
+
+func TestTerrainDeleteBroadcastsUnavailableAndRejectsWebSocketMutation(t *testing.T) {
+	store := testStore(t)
+	owner := testUser(t, store, "owner", false)
+	value, err := store.createMap(context.Background(), owner, "Plan", "altis")
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := newServer(testConfig(t, completeWorld(t)), store)
+	httpServer := httptest.NewServer(server.routes())
+	defer httpServer.Close()
+	server.config.PublicURL, _ = url.Parse(httpServer.URL)
+	token, err := store.createSession(context.Background(), owner.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	connection := dialMap(t, httpServer.URL, value.ID, token, httpServer.URL)
+	readSocketType(t, connection, "snapshot")
+
+	response := httptest.NewRecorder()
+	server.routes().ServeHTTP(response, authenticatedRequest(t, server, User{ID: "admin", Username: "admin", DisplayName: "Admin"}, http.MethodDelete, "/api/admin/worlds/altis", `{"activeMaps":1,"trashedMaps":0}`))
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("delete status=%d body=%q", response.Code, response.Body.String())
+	}
+	unavailable := readSocketType(t, connection, "snapshot")
+	if unavailable.Map == nil || unavailable.Map.WorldAvailable {
+		t.Fatalf("snapshot=%#v", unavailable)
+	}
+	point := Point{1, 2}
+	if err := wsjson.Write(context.Background(), connection, socketMessage{Type: "mutation", Operation: "create", Annotation: &Annotation{LayerID: value.Layers[0].ID, Kind: "marker", Color: "ColorBlue", Icon: "mil_dot", Point: &point, Scale: 1}}); err != nil {
+		t.Fatal(err)
+	}
+	if message := readSocketType(t, connection, "error"); message.Message != "conflict" {
+		t.Fatalf("message=%#v", message)
+	}
+}

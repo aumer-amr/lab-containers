@@ -30,6 +30,7 @@ export type TacMap = {
   layers: Layer[]
 }
 export type World = { name: string; size: number; styles: string[]; format: 'pmtiles' | 'raster'; maxZoom?: number; preview?: string; hasMeta: boolean }
+export type AdminWorld = { name: string; valid: boolean; validationError: string; format?: 'pmtiles' | 'raster'; styles?: string[]; activeMaps: number; trashedMaps: number; ready: boolean; size?: number }
 export type Revision = { id: number; mapId: string; version: number; actor: User; kind: string; data?: { annotation?: Annotation; snapshot?: TacMap }; createdAt: number }
 export type SocketMessage = {
   type: 'snapshot' | 'mutation' | 'acknowledgement' | 'error' | 'presence' | 'cursor'

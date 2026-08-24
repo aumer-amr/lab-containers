@@ -1,4 +1,4 @@
-import type { Revision, TacMap, User, World } from './types'
+import type { AdminWorld, Revision, TacMap, User, World } from './types'
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(path, { credentials: 'same-origin', ...options, headers: { 'Content-Type': 'application/json', ...options?.headers } })
@@ -11,7 +11,27 @@ export const api = {
   me: () => request<User>('/api/me'),
   logout: () => request<void>('/auth/logout', { method: 'POST' }),
   worlds: () => request<World[]>('/api/worlds'),
-  worldPreviewExists: async (world: string, style: string) => (await fetch(`/api/worlds/${encodeURIComponent(world)}/previews/${encodeURIComponent(style)}`, { method: 'HEAD', credentials: 'same-origin' })).ok,
+  adminWorlds: () => request<AdminWorld[]>('/api/admin/worlds'),
+  adminWorld: (world: string) => request<AdminWorld>(`/api/admin/worlds/${encodeURIComponent(world)}`),
+  uploadWorld: (file: File, progress: (percentage: number) => void) => new Promise<AdminWorld>((resolve, reject) => {
+    const request = new XMLHttpRequest()
+    request.open('POST', '/api/admin/worlds')
+    request.setRequestHeader('Content-Type', 'application/zip')
+    request.upload.onprogress = (event) => { if (event.lengthComputable) progress(Math.round(event.loaded / event.total * 100)) }
+    request.onload = () => {
+      if (request.status === 201) resolve(JSON.parse(request.responseText) as AdminWorld)
+      else reject(new Error(request.responseText || request.statusText))
+    }
+    request.onerror = () => reject(new Error('Upload failed'))
+    request.send(file)
+  }),
+  deleteWorld: async (world: string, activeMaps: number, trashedMaps: number) => {
+    const response = await fetch(`/api/admin/worlds/${encodeURIComponent(world)}`, { method: 'DELETE', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ activeMaps, trashedMaps }) })
+    if (response.status === 409) return response.json() as Promise<AdminWorld>
+    if (!response.ok) throw new Error(await response.text() || response.statusText)
+    return undefined
+  },
+  completeWorldPreviews: (world: string) => request<AdminWorld>(`/api/admin/worlds/${encodeURIComponent(world)}/previews/complete`, { method: 'POST' }),
   saveWorldPreview: async (world: string, style: string, preview: Blob) => {
     const response = await fetch(`/api/worlds/${encodeURIComponent(world)}/previews/${encodeURIComponent(style)}`, { method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'image/png' }, body: preview })
     if (!response.ok) throw new Error(await response.text() || response.statusText)

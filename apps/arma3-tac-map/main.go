@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -13,11 +14,13 @@ import (
 var frontendFiles embed.FS
 
 type Server struct {
-	config     Config
-	store      *Store
-	httpClient *http.Client
-	roomsMu    sync.RWMutex
-	rooms      map[string]*room
+	config      Config
+	store       *Store
+	httpClient  *http.Client
+	roomsMu     sync.RWMutex
+	rooms       map[string]*room
+	terrainMu   sync.RWMutex
+	terrainBusy atomic.Bool
 }
 
 func newServer(config Config, store *Store) *Server {
@@ -53,6 +56,9 @@ func main() {
 	}
 	defer store.close()
 	server := newServer(config, store)
+	if err := cleanupTerrainArtifacts(config.MapsPath); err != nil {
+		log.Printf("terrain cleanup failed")
+	}
 	httpServer := &http.Server{Addr: config.ListenAddress, Handler: server.routes(), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
 	log.Printf("listening on %s", config.ListenAddress)
 	log.Fatal(httpServer.ListenAndServe())

@@ -2,4 +2,5 @@
 PLAN.md
 web/node_modules
 web/dist
+tmp
 **/*_test.go

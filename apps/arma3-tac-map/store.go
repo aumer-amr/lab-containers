@@ -246,6 +246,80 @@ func (s *Store) listMaps(ctx context.Context, trash bool) ([]Map, error) {
 	return maps, rows.Err()
 }
 
+func (s *Store) worldMapCounts(ctx context.Context, world string) (active, trashed int, err error) {
+	err = s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(deleted_at IS NULL),0),COALESCE(SUM(deleted_at IS NOT NULL),0) FROM maps WHERE world=?`, world).Scan(&active, &trashed)
+	return
+}
+
+func (s *Store) activeMapIDsByWorld(ctx context.Context, world string) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id FROM maps WHERE world=? AND deleted_at IS NULL`, world)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+func (s *Store) trashActiveMapsByWorld(ctx context.Context, actor User, world string) ([]string, error) {
+	if !actor.Admin {
+		return nil, errForbidden
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	rows, err := tx.QueryContext(ctx, `SELECT id,version FROM maps WHERE world=? AND deleted_at IS NULL`, world)
+	if err != nil {
+		return nil, err
+	}
+	type mapVersion struct {
+		id      string
+		version int64
+	}
+	var maps []mapVersion
+	for rows.Next() {
+		var value mapVersion
+		if err := rows.Scan(&value.id, &value.version); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		maps = append(maps, value)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	payload, _ := json.Marshal(event{})
+	deletedAt := time.Now().Unix()
+	ids := make([]string, 0, len(maps))
+	for _, value := range maps {
+		version := value.version + 1
+		result, err := tx.ExecContext(ctx, `UPDATE maps SET deleted_at=?,version=? WHERE id=? AND deleted_at IS NULL`, deletedAt, version, value.id)
+		if err != nil {
+			return nil, err
+		}
+		if count, _ := result.RowsAffected(); count != 1 {
+			return nil, errConflict
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO revisions(map_id,version,actor_id,kind,data,created_at) VALUES(?,?,?,?,?,?)`, value.id, version, actor.ID, "map.delete", payload, deletedAt); err != nil {
+			return nil, err
+		}
+		ids = append(ids, value.id)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
 func (s *Store) getMap(ctx context.Context, id string) (Map, error) {
 	var value Map
 	var deleted sql.NullInt64

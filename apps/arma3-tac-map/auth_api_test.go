@@ -16,7 +16,7 @@ import (
 func testConfig(t *testing.T, mapsPath string) Config {
 	t.Helper()
 	publicURL, _ := url.Parse("https://maps.example.test")
-	return Config{PublicURL: publicURL, DiscordClientID: "client", DiscordClientSecret: "secret", DiscordGuildID: "guild", DiscordAllowedRoleID: "role", AdminIDs: map[string]bool{"admin": true}, DatabasePath: t.TempDir() + "/test.db", MapsPath: mapsPath, ListenAddress: ":0", DiscordAuthorizeURL: "https://discord.example/authorize", DiscordTokenURL: "https://discord.example/token", DiscordAPIURL: "https://discord.example/api"}
+	return Config{PublicURL: publicURL, DiscordClientID: "client", DiscordClientSecret: "secret", DiscordGuildID: "guild", DiscordAllowedRoleID: "role", AdminIDs: map[string]bool{"admin": true}, DatabasePath: t.TempDir() + "/test.db", MapsPath: mapsPath, PreviewCachePath: t.TempDir(), ListenAddress: ":0", DiscordAuthorizeURL: "https://discord.example/authorize", DiscordTokenURL: "https://discord.example/token", DiscordAPIURL: "https://discord.example/api"}
 }
 func authenticatedRequest(t *testing.T, server *Server, user User, method, path, body string) *http.Request {
 	t.Helper()
@@ -180,6 +180,11 @@ func TestEveryAPIRouteRequiresAuthentication(t *testing.T) {
 	}{
 		{http.MethodGet, "/api/me"},
 		{http.MethodGet, "/api/worlds"},
+		{http.MethodGet, "/api/admin/worlds"},
+		{http.MethodPost, "/api/admin/worlds"},
+		{http.MethodGet, "/api/admin/worlds/altis"},
+		{http.MethodDelete, "/api/admin/worlds/altis"},
+		{http.MethodPost, "/api/admin/worlds/altis/previews/complete"},
 		{http.MethodGet, "/api/worlds/altis/assets/map.json"},
 		{http.MethodGet, "/api/assets/fonts/test.pbf"},
 		{http.MethodGet, "/api/maps"},
@@ -218,6 +223,11 @@ func TestAdminAPIsRejectNonAdmins(t *testing.T) {
 		path   string
 	}{
 		{http.MethodGet, "/api/trash"},
+		{http.MethodGet, "/api/admin/worlds"},
+		{http.MethodPost, "/api/admin/worlds"},
+		{http.MethodGet, "/api/admin/worlds/altis"},
+		{http.MethodDelete, "/api/admin/worlds/altis"},
+		{http.MethodPost, "/api/admin/worlds/altis/previews/complete"},
 		{http.MethodDelete, "/api/trash/missing"},
 		{http.MethodPost, "/api/maps/missing/trash/restore"},
 		{http.MethodGet, "/api/maps/missing/revisions"},

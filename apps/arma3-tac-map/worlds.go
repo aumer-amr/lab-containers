@@ -50,7 +50,7 @@ func discoverWorlds(root string) ([]World, error) {
 	}
 	worlds := make([]World, 0)
 	for _, entry := range entries {
-		if !entry.IsDir() || !safeWorldName.MatchString(entry.Name()) {
+		if !entry.IsDir() || !safeWorldName.MatchString(entry.Name()) || !worldPreviewsReady(root, entry.Name()) {
 			continue
 		}
 		world, err := inspectWorld(root, entry.Name())
@@ -60,6 +60,11 @@ func discoverWorlds(root string) ([]World, error) {
 	}
 	sort.Slice(worlds, func(i, j int) bool { return worlds[i].Name < worlds[j].Name })
 	return worlds, nil
+}
+
+func worldPreviewsReady(root, name string) bool {
+	_, err := os.Lstat(filepath.Join(root, name, previewPendingMarker))
+	return errors.Is(err, os.ErrNotExist)
 }
 
 func inspectWorld(root, name string) (World, error) {
@@ -347,5 +352,14 @@ func mapsReady(root string) error {
 	if !info.IsDir() {
 		return &fs.PathError{Op: "stat", Path: root, Err: errors.New("not a directory")}
 	}
-	return nil
+	probe, err := os.CreateTemp(root, ".arma3-tac-map-ready-")
+	if err != nil {
+		return err
+	}
+	name := probe.Name()
+	if err := probe.Close(); err != nil {
+		os.Remove(name)
+		return err
+	}
+	return os.Remove(name)
 }

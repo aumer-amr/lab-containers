@@ -4,8 +4,11 @@ import (
 	"errors"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 )
+
+const defaultMapUploadMaxBytes int64 = 5 * 1024 * 1024 * 1024
 
 type Config struct {
 	PublicURL            *url.URL
@@ -16,6 +19,7 @@ type Config struct {
 	AdminIDs             map[string]bool
 	DatabasePath         string
 	MapsPath             string
+	MapUploadMaxBytes    int64
 	PreviewCachePath     string
 	ListenAddress        string
 	DiscordAuthorizeURL  string
@@ -40,6 +44,14 @@ func loadConfig() (Config, error) {
 			adminIDs[id] = true
 		}
 	}
+	uploadMaxBytes := defaultMapUploadMaxBytes
+	if value := strings.TrimSpace(os.Getenv("MAP_UPLOAD_MAX_BYTES")); value != "" {
+		parsed, err := strconv.ParseInt(value, 10, 64)
+		if err != nil || parsed <= 0 {
+			return Config{}, errors.New("MAP_UPLOAD_MAX_BYTES must be a positive integer")
+		}
+		uploadMaxBytes = parsed
+	}
 	return Config{
 		PublicURL:            publicURL,
 		DiscordClientID:      os.Getenv("DISCORD_CLIENT_ID"),
@@ -49,6 +61,7 @@ func loadConfig() (Config, error) {
 		AdminIDs:             adminIDs,
 		DatabasePath:         envOr("DATABASE_PATH", "/data/tacmap.db"),
 		MapsPath:             envOr("MAPS_PATH", "/maps"),
+		MapUploadMaxBytes:    uploadMaxBytes,
 		PreviewCachePath:     envOr("PREVIEW_CACHE_PATH", "/data/previews"),
 		ListenAddress:        envOr("LISTEN_ADDRESS", ":8080"),
 		DiscordAuthorizeURL:  "https://discord.com/oauth2/authorize",
