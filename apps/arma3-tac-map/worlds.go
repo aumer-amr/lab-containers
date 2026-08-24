@@ -1,17 +1,23 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"image/png"
+	"io"
 	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 )
+
+const previewMaxBytes = 2 << 20
 
 var safeWorldName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
@@ -211,6 +217,73 @@ func serveWorldAsset(root, world, asset string, w http.ResponseWriter, r *http.R
 		return
 	}
 	serveAsset(directory, asset, w, r)
+}
+
+func serveWorldPreview(mapsRoot, cacheRoot, worldName, style string, w http.ResponseWriter, r *http.Request) {
+	if !safeWorldName.MatchString(worldName) || !safeWorldName.MatchString(style) {
+		http.NotFound(w, r)
+		return
+	}
+	world, err := inspectWorld(mapsRoot, worldName)
+	if err != nil || !slices.Contains(world.Styles, style) {
+		http.NotFound(w, r)
+		return
+	}
+	directory := filepath.Join(cacheRoot, worldName)
+	name := style + ".png"
+	if r.Method == http.MethodGet || r.Method == http.MethodHead {
+		if info, statErr := os.Stat(filepath.Join(directory, name)); statErr == nil && !info.IsDir() {
+			serveAsset(directory, name, w, r)
+		} else {
+			serveAsset(filepath.Join(mapsRoot, worldName, "previews"), name, w, r)
+		}
+		return
+	}
+	if r.Header.Get("Content-Type") != "image/png" {
+		http.Error(w, "preview must be a PNG", http.StatusUnsupportedMediaType)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, previewMaxBytes)
+	raw, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "preview is too large", http.StatusRequestEntityTooLarge)
+		return
+	}
+	image, err := png.Decode(bytes.NewReader(raw))
+	if err != nil || image.Bounds().Dx() != 320 || image.Bounds().Dy() != 240 {
+		http.Error(w, "preview must be a 320x240 PNG", http.StatusBadRequest)
+		return
+	}
+	if err := os.MkdirAll(directory, 0755); err != nil {
+		writeError(w, err)
+		return
+	}
+	temporary, err := os.CreateTemp(directory, ".preview-*.png")
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	temporaryName := temporary.Name()
+	defer os.Remove(temporaryName)
+	if _, err = temporary.Write(raw); err == nil {
+		err = temporary.Chmod(0644)
+	}
+	if closeErr := temporary.Close(); err == nil {
+		err = closeErr
+	}
+	if err == nil {
+		err = os.Rename(temporaryName, filepath.Join(directory, name))
+	}
+	if err != nil {
+		if _, statErr := os.Stat(filepath.Join(directory, name)); statErr == nil {
+			err = nil
+		}
+	}
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func serveAsset(root, asset string, w http.ResponseWriter, r *http.Request) {

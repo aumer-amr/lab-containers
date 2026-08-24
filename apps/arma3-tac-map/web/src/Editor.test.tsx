@@ -1,16 +1,18 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { api } from './api'
 import { Editor } from './Editor'
-import type { Revision, TacMap, User } from './types'
+import type { Revision, TacMap, User, World } from './types'
 
 const collaboration = vi.hoisted(() => ({ create: vi.fn(), update: vi.fn(), remove: vi.fn() }))
+const previewRenderer = vi.hoisted(() => vi.fn())
 
 vi.mock('./MapCanvas', () => ({
   MapCanvas: ({ activeTool, onPlaceMarker, onEditMarker }: { activeTool: string | null; onPlaceMarker(point: [number, number]): void; onEditMarker(annotation: unknown): void }) => <><p>Active tool: {activeTool ?? 'none'}</p><button onClick={() => onPlaceMarker([25, 35])}>Click map for marker</button><button onClick={() => onEditMarker({ id: 'placed', mapId: 'map', layerId: 'general', kind: 'marker', position: 1, color: 'ColorBlue', point: [10, 20], icon: 'mil_warning', label: 'Danger', rotation: 45, scale: 1.5 })}>Edit existing marker</button></>,
+  renderStylePreview: previewRenderer,
 }))
 
-afterEach(() => { cleanup(); vi.clearAllMocks() })
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.clearAllMocks() })
 
 vi.mock('./collaboration', () => ({
   useCollaboration: (_mapID: string, initial: TacMap) => ({
@@ -53,10 +55,35 @@ it('selects the drawing layer directly from the layer list', () => {
 
 it('only offers separable detail controls for raster maps', () => {
   render(<Editor initial={{ ...map, worldAvailable: true }} user={user} world={{ name: 'lythium', size: 20480, styles: ['color-relief', 'topo'], format: 'raster', maxZoom: 7, hasMeta: false }} onBack={vi.fn()} />)
-  expect(screen.getByRole('combobox', { name: 'Terrain style' })).toHaveValue('topo')
+  const switcher = screen.getByLabelText('Map style: Topo')
+  const image = switcher.querySelector('img')!
+  expect(image).toHaveAttribute('src', '/api/worlds/lythium/previews/topo?v=0')
+  fireEvent.error(image)
+  expect(image).toHaveAttribute('src', '/api/worlds/lythium/assets/0/0/0.png')
+  const details = switcher.closest('details')!
+  fireEvent.mouseEnter(details)
+  fireEvent.click(screen.getByRole('button', { name: 'Color Relief' }))
+  expect(screen.getByLabelText('Map style: Color Relief')).toBeInTheDocument()
+  expect(details).toHaveAttribute('open')
+  fireEvent.mouseLeave(details)
+  expect(details).not.toHaveAttribute('open')
   expect(screen.getByRole('checkbox', { name: 'terrain' })).toBeInTheDocument()
   expect(screen.getByRole('checkbox', { name: 'grid' })).toBeInTheDocument()
   expect(screen.queryByRole('checkbox', { name: 'roads' })).not.toBeInTheDocument()
+})
+
+it('shows progress while creating and saving missing vector previews', async () => {
+  vi.spyOn(api, 'worldPreviewExists').mockResolvedValue(false)
+  vi.spyOn(api, 'saveWorldPreview').mockResolvedValue()
+  let finishFirst!: (preview: Blob) => void
+  previewRenderer.mockReturnValueOnce(new Promise((resolve) => { finishFirst = resolve })).mockResolvedValue(new Blob(['png'], { type: 'image/png' }))
+  const world: World = { name: 'dagger', size: 20480, styles: ['topo', 'topo-dark'], format: 'pmtiles', hasMeta: false }
+  render(<Editor initial={{ ...map, worldAvailable: true }} user={user} world={world} onBack={vi.fn()} />)
+  expect(await screen.findByRole('status')).toHaveTextContent('Creating map previews')
+  await act(async () => finishFirst(new Blob(['png'], { type: 'image/png' })))
+  await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument())
+  expect(previewRenderer).toHaveBeenCalledTimes(2)
+  expect(api.saveWorldPreview).toHaveBeenCalledTimes(2)
 })
 
 it('opens marker settings only after choosing a map position', () => {
@@ -108,6 +135,25 @@ it('offers distance and radius measurement tools', () => {
   fireEvent.click(radius)
   expect(screen.getByText('Active tool: none')).toBeInTheDocument()
   expect(screen.queryByRole('combobox', { name: 'Color' })).not.toBeInTheDocument()
+})
+
+it('arms marker rotation without opening marker settings', () => {
+  render(<Editor initial={{ ...map, worldAvailable: true }} user={user} world={{ name: 'altis', size: 100, styles: ['default'], format: 'pmtiles', hasMeta: false }} onBack={vi.fn()} />)
+  fireEvent.click(screen.getByRole('button', { name: 'Rotate' }))
+  expect(screen.getByText('Active tool: rotate')).toBeInTheDocument()
+  expect(screen.getByText(/click a marker, then drag its circle/i)).toBeInTheDocument()
+  expect(screen.queryByRole('dialog', { name: 'Edit marker' })).not.toBeInTheDocument()
+})
+
+it('selects tools by keyboard without hijacking text input', () => {
+  render(<Editor initial={{ ...map, worldAvailable: true }} user={user} world={{ name: 'altis', size: 100, styles: ['default'], format: 'pmtiles', hasMeta: false }} onBack={vi.fn()} />)
+  fireEvent.keyDown(window, { key: 'r' })
+  expect(screen.getByText('Active tool: rotate')).toBeInTheDocument()
+  fireEvent.keyDown(window, { key: 'p' })
+  expect(screen.getByText('Active tool: pointer')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Notes' }))
+  fireEvent.keyDown(screen.getByRole('textbox', { name: 'Note' }), { key: 'm' })
+  expect(screen.getByText('Active tool: pointer')).toBeInTheDocument()
 })
 
 it('edits an existing marker from its populated dialog', () => {

@@ -16,6 +16,7 @@ type Config struct {
 	AdminIDs             map[string]bool
 	DatabasePath         string
 	MapsPath             string
+	PreviewCachePath     string
 	ListenAddress        string
 	DiscordAuthorizeURL  string
 	DiscordTokenURL      string
@@ -48,6 +49,7 @@ func loadConfig() (Config, error) {
 		AdminIDs:             adminIDs,
 		DatabasePath:         envOr("DATABASE_PATH", "/data/tacmap.db"),
 		MapsPath:             envOr("MAPS_PATH", "/maps"),
+		PreviewCachePath:     envOr("PREVIEW_CACHE_PATH", "/data/previews"),
 		ListenAddress:        envOr("LISTEN_ADDRESS", ":8080"),
 		DiscordAuthorizeURL:  "https://discord.com/oauth2/authorize",
 		DiscordTokenURL:      "https://discord.com/api/oauth2/token",

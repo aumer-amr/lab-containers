@@ -11,6 +11,11 @@ export const api = {
   me: () => request<User>('/api/me'),
   logout: () => request<void>('/auth/logout', { method: 'POST' }),
   worlds: () => request<World[]>('/api/worlds'),
+  worldPreviewExists: async (world: string, style: string) => (await fetch(`/api/worlds/${encodeURIComponent(world)}/previews/${encodeURIComponent(style)}`, { method: 'HEAD', credentials: 'same-origin' })).ok,
+  saveWorldPreview: async (world: string, style: string, preview: Blob) => {
+    const response = await fetch(`/api/worlds/${encodeURIComponent(world)}/previews/${encodeURIComponent(style)}`, { method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'image/png' }, body: preview })
+    if (!response.ok) throw new Error(await response.text() || response.statusText)
+  },
   maps: () => request<TacMap[]>('/api/maps'),
   trash: () => request<TacMap[]>('/api/trash'),
   map: (id: string) => request<TacMap>(`/api/maps/${id}`),

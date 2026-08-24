@@ -28,7 +28,7 @@ type Props = {
   annotations: Annotation[]
   cursors: Record<string, RemoteCursor>
   editing: boolean
-  activeTool: 'pointer' | 'marker' | 'polyline' | 'freehand' | 'measure' | 'radius' | null
+  activeTool: 'pointer' | 'marker' | 'rotate' | 'polyline' | 'freehand' | 'measure' | 'radius' | null
   layerID: string
   color: string
   icon: string
@@ -50,10 +50,7 @@ async function loadStyle(world: string, style: string): Promise<StyleSpecificati
   const value = await response.json() as Record<string, unknown>
   const rewrite = (item: unknown): unknown => {
     if (typeof item === 'string') {
-      if (item.startsWith('pmtiles://')) return styleAssetURL(item, world)
-      if (item.startsWith('fonts/')) return `/api/assets/fonts/${item.slice('fonts/'.length)}`
-      if (item.startsWith('sprites/')) return `${prefix}${item}`
-      return item
+      return styleResourceURL(item, world)
     }
     if (Array.isArray(item)) return item.map(rewrite)
     if (item && typeof item === 'object') return Object.fromEntries(Object.entries(item).map(([key, child]) => [key, rewrite(child)]))
@@ -69,12 +66,56 @@ export function normalizeStyleBackground(style: StyleSpecification) {
   return style
 }
 
+export async function renderStylePreview(world: World, styleName: string) {
+  if (world.format !== 'pmtiles') throw new Error('Only vector styles require rendered previews')
+  const container = document.createElement('div')
+  container.className = 'style-renderer'
+  document.body.append(container)
+  let map: MapLibreMap | undefined
+  try {
+    map = new maplibregl.Map({
+      container,
+      style: await loadStyle(world.name, styleName),
+      interactive: false,
+      attributionControl: false,
+      canvasContextAttributes: { preserveDrawingBuffer: true },
+    })
+    const [south, west] = toLeaflet([0, 0])
+    const [north, east] = toLeaflet([world.size, world.size])
+    map.fitBounds([[west, south], [east, north]], { padding: 10, animate: false })
+    await waitForPreview(map)
+    const blob = await new Promise<Blob | null>((resolve) => map!.getCanvas().toBlob(resolve, 'image/png'))
+    if (!blob) throw new Error('Preview rendering failed')
+    return blob
+  } finally {
+    map?.remove()
+    container.remove()
+  }
+}
+
+export function waitForPreview(map: Pick<MapLibreMap, 'once'>, deadline = 20_000) {
+  return new Promise<void>((resolve) => {
+    const timeout = window.setTimeout(resolve, deadline)
+    map.once('idle', () => { clearTimeout(timeout); resolve() })
+  })
+}
+
 export function styleAssetURL(value: string, world: string, origin = location.origin): string {
   const prefix = `/api/worlds/${encodeURIComponent(world)}/assets/`
   const worldPrefix = `images/maps/${world}/`
   let asset = value.slice('pmtiles://'.length).replace(/^\.\//, '')
   if (asset.startsWith(worldPrefix)) asset = asset.slice(worldPrefix.length)
   return `pmtiles://${origin}${prefix}${asset}`
+}
+
+export function styleResourceURL(value: string, world: string, origin = location.origin) {
+  if (value.startsWith('pmtiles://')) return styleAssetURL(value, world, origin)
+  for (const kind of ['fonts', 'sprites']) {
+    const prefix = `images/maps/${kind}/`
+    if (value.startsWith(prefix)) return `${origin}/api/assets/${kind}/${value.slice(prefix.length)}`
+    if (value.startsWith(`${kind}/`)) return `${origin}/api/assets/${value}`
+  }
+  return value
 }
 
 export function rasterTileURL(world: string, style: string) {
@@ -94,8 +135,15 @@ export function rasterCRS(worldSize: number): L.CRS {
   return L.extend({}, L.CRS.Simple, { transformation: new L.Transformation(1, 0, -1, worldSize) }) as L.CRS
 }
 
+export function observeMapResize(element: Element, map: Pick<L.Map, 'invalidateSize'>) {
+  const observer = new ResizeObserver(() => map.invalidateSize({ pan: false }))
+  observer.observe(element)
+  return () => observer.disconnect()
+}
+
 export function MapCanvas(props: Props) {
   const [pluginsReady, setPluginsReady] = useState(false)
+  const [rotatingMarkerID, setRotatingMarkerID] = useState<string | null>(null)
   const element = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
   const vectorTerrainRef = useRef<MapLibreLayer | null>(null)
@@ -118,10 +166,11 @@ export function MapCanvas(props: Props) {
     const raster = props.world.format === 'raster'
     const map = L.map(element.current, { crs: raster ? rasterCRS(props.world.size) : L.CRS.EPSG3857, minZoom: raster ? -(props.world.maxZoom ?? 0) : 1, maxZoom: raster ? 2 : 22, zoomControl: true, doubleClickZoom: false })
     map.fitBounds([projectPoint(props.world, [0, 0]), projectPoint(props.world, [props.world.size, props.world.size])])
+    const stopObserving = observeMapResize(element.current, map)
     annotationGroup.current = L.layerGroup().addTo(map)
     cursorGroup.current = L.layerGroup().addTo(map)
     mapRef.current = map
-    return () => { map.remove(); mapRef.current = null; cursorMarkers.current.clear() }
+    return () => { stopObserving(); map.remove(); mapRef.current = null; cursorMarkers.current.clear() }
   }, [pluginsReady, props.world.format, props.world.maxZoom, props.world.name, props.world.size])
 
   useEffect(() => {
@@ -187,15 +236,18 @@ export function MapCanvas(props: Props) {
 
   useEffect(() => {
     const group = annotationGroup.current
-    if (!group) return
+    const map = mapRef.current
+    if (!group || !map) return
     group.clearLayers()
+    let stopRotating = () => {}
     let selectedFound = false
     for (const annotation of props.annotations) {
       if (annotation.kind === 'note') continue
       let layer: L.Layer
       let related: L.Path | undefined
       if (annotation.kind === 'marker' && annotation.point) {
-        layer = L.marker(projectPoint(props.world, annotation.point), { icon: L.divIcon({ className: 'mil-marker', iconSize: [32, 32], iconAnchor: [16, 16], html: markerHTML(annotation) }) })
+        const selected = props.activeTool === 'rotate' && rotatingMarkerID === annotation.id
+        layer = L.marker(projectPoint(props.world, annotation.point), { icon: L.divIcon({ className: `mil-marker${selected ? ' rotation-selected' : ''}`, iconSize: selected ? [56, 56] : [32, 32], iconAnchor: selected ? [28, 28] : [16, 16], html: markerHTML(annotation, selected) }) })
       } else {
         const selected = props.editing && selectedLine.current?.id === annotation.id
         const points = annotation.points ?? []
@@ -208,7 +260,40 @@ export function MapCanvas(props: Props) {
         if (selected) { selectedFound = true; selectedLine.current = { id: annotation.id, layer: line, normalWeight, related } }
       }
       if (annotation.kind === 'marker') {
-        layer.on('click', () => { if (current.current.editing) current.current.onEditMarker(annotation) })
+        layer.on('click', () => {
+          if (!current.current.editing) return
+          if (current.current.activeTool === 'rotate') setRotatingMarkerID(annotation.id)
+          else current.current.onEditMarker(annotation)
+        })
+        layer.on('mousedown', (event: L.LeafletMouseEvent) => {
+          if (!current.current.editing || current.current.activeTool !== 'rotate' || rotatingMarkerID !== annotation.id || event.originalEvent.button !== 0 || !(layer instanceof L.Marker)) return
+          L.DomEvent.stopPropagation(event.originalEvent)
+          let changed = false
+          let rotation = annotation.rotation ?? 0
+          const origin = map.latLngToContainerPoint(layer.getLatLng())
+          const rotate = (moveEvent: L.LeafletMouseEvent) => {
+            const target = map.latLngToContainerPoint(moveEvent.latlng)
+            if (target.equals(origin)) return
+            changed = true
+            rotation = markerRotation(origin, target)
+            const image = layer.getElement()?.querySelector('img')
+            if (image) image.style.transform = `rotate(${rotation}deg) scale(${annotation.scale ?? 1})`
+            const control = layer.getElement()?.querySelector<HTMLElement>('.rotation-control')
+            if (control) control.style.transform = `rotate(${rotation}deg)`
+          }
+          const finish = () => {
+            map.off('mousemove', rotate).off('mouseup mouseout', finish)
+            map.dragging.enable()
+            layer.getElement()?.classList.remove('rotation-dragging')
+            stopRotating = () => {}
+            if (changed) current.current.onUpdate({ ...annotation, rotation })
+          }
+          stopRotating()
+          stopRotating = () => { map.off('mousemove', rotate).off('mouseup mouseout', finish); map.dragging.enable(); layer.getElement()?.classList.remove('rotation-dragging') }
+          map.dragging.disable()
+          layer.getElement()?.classList.add('rotation-dragging')
+          map.on('mousemove', rotate).on('mouseup mouseout', finish)
+        })
       } else {
         const select = () => {
           if (!current.current.editing || !(layer instanceof L.Polyline)) return
@@ -233,7 +318,8 @@ export function MapCanvas(props: Props) {
       group.addLayer(layer)
     }
     if (!selectedFound) selectedLine.current = null
-  }, [props.annotations, props.editing, props.world])
+    return () => stopRotating()
+  }, [props.activeTool, props.annotations, props.editing, props.world, rotatingMarkerID])
 
   useEffect(() => {
     const group = cursorGroup.current
@@ -267,6 +353,14 @@ export function MapCanvas(props: Props) {
     }
 
     map.getContainer().classList.add('drawing-armed')
+
+    if (props.activeTool === 'rotate') {
+      const clearSelection = (event: L.LeafletMouseEvent) => { if (!targetsAnnotation(event)) setRotatingMarkerID(null) }
+      map.getContainer().classList.add('rotate-armed')
+      map.getContainer().classList.remove('drawing-armed')
+      map.on('click', clearSelection)
+      return () => { map.off('click', clearSelection); map.getContainer().classList.remove('rotate-armed') }
+    }
 
     if (props.activeTool === 'marker') {
       const place = (event: L.LeafletMouseEvent) => {
@@ -455,11 +549,15 @@ export function syncRemoteCursors(markers: Map<string, RemoteCursorMarker>, curs
     if (!(id in cursors)) { marker.remove(); markers.delete(id) }
   }
 }
-export function markerHTML(annotation: Pick<Annotation, 'icon' | 'color' | 'label' | 'rotation' | 'scale'>) {
+export function markerHTML(annotation: Pick<Annotation, 'icon' | 'color' | 'label' | 'rotation' | 'scale'>, selected = false) {
   const url = markerImageURL(annotation.icon ?? 'mil_dot', annotation.color)
   const rotation = Number.isFinite(annotation.rotation) ? annotation.rotation ?? 0 : 0
   const scale = Number.isFinite(annotation.scale) && (annotation.scale ?? 0) > 0 ? annotation.scale ?? 1 : 1
   const label = annotation.label ? `<span style="color:${cssColor(annotation.color)}">${escapeHTML(annotation.label)}</span>` : ''
-  return `<img src="${url}" alt="" referrerpolicy="no-referrer" style="transform:rotate(${rotation}deg) scale(${scale})">${label}`
+  const control = selected ? `<i class="rotation-control" style="transform:rotate(${rotation}deg)"></i>` : ''
+  return `${control}<img src="${url}" alt="" referrerpolicy="no-referrer" style="transform:rotate(${rotation}deg) scale(${scale})">${label}`
+}
+export function markerRotation(origin: { x: number; y: number }, target: { x: number; y: number }) {
+  return Math.round((Math.atan2(target.x - origin.x, origin.y - target.y) * 180 / Math.PI + 360) % 360) % 360
 }
 export function cssColor(color: string) { return ({ ColorBlack: '#111', ColorGrey: '#6b7280', ColorRed: '#ef4444', ColorBrown: '#92400e', ColorOrange: '#f97316', ColorYellow: '#eab308', ColorKhaki: '#a3a35b', ColorGreen: '#22c55e', ColorBlue: '#3b82f6', ColorPink: '#ec4899', ColorWhite: '#fff', ColorUNKNOWN: '#f97316', colorBLUFOR: '#2563eb', colorOPFOR: '#dc2626', colorIndependent: '#16a34a', colorCivilian: '#9333ea' } as Record<string, string>)[color] ?? '#f97316' }

@@ -28,6 +28,7 @@ Optional variables:
 ADMIN_DISCORD_USER_IDS=123,456
 DATABASE_PATH=/data/tacmap.db
 MAPS_PATH=/maps
+PREVIEW_CACHE_PATH=/data/previews
 LISTEN_ADDRESS=:8080
 ```
 
@@ -41,12 +42,16 @@ Mount OCAP2-generated assets read-only at `/maps`. Each complete world uses:
 /maps/<world>/map.json
 /maps/<world>/meta.json          # optional
 /maps/<world>/preview.png        # optional
+/maps/<world>/previews/<style>.png # optional style thumbnails
 /maps/<world>/styles/*.json
 /maps/<world>/tiles/*.pmtiles
 /maps/fonts/...                  # shared fonts when referenced
+/maps/sprites/...                # shared sprites when referenced
 ```
 
 GDAL2Tiles raster exports are also supported. Keep their numeric `{z}/{x}/{y}.png` folders beside `map.json`; optional terrain variants use the existing `colorRelief`, `topoDark`, and `topoRelief` directories. The manifest's `maxZoom` and `hasTopo*` flags determine which styles are offered.
+
+For the map-style picker, optionally add a zoomed-out whole-map image at `previews/<style>.png` for each style. When vector-style thumbnails are missing, the first editor renders them in MapLibre and stores the resulting 320×240 PNGs in `PREVIEW_CACHE_PATH`; later editors reuse that disposable cache. Raster styles fall back to their zoom-zero tile.
 
 `map.json` needs positive `worldSize`, `world_size`, or `size`. A world is offered for new plans only when it has at least one complete MapLibre/PMTiles style or raster tile pyramid. Asset names may contain letters, numbers, dots, underscores, and hyphens. Regenerate assets outside this container; runtime upload/generation is intentionally unsupported.
 

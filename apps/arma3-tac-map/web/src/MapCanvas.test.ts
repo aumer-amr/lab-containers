@@ -5,8 +5,22 @@ it('loads Leaflet plugins after publishing the Leaflet global', async () => {
 })
 
 it('rewrites OCAP map paths to authenticated world assets', async () => {
-  const { styleAssetURL } = await import('./MapCanvas')
+  const { styleAssetURL, styleResourceURL } = await import('./MapCanvas')
   expect(styleAssetURL('pmtiles://images/maps/blood_optre/tiles/features.pmtiles', 'blood_optre', 'http://localhost:8080')).toBe('pmtiles://http://localhost:8080/api/worlds/blood_optre/assets/tiles/features.pmtiles')
+  expect(styleResourceURL('images/maps/sprites/sprite', 'blood_optre', 'http://localhost:8080')).toBe('http://localhost:8080/api/assets/sprites/sprite')
+  expect(styleResourceURL('images/maps/fonts/Roboto/{range}.pbf', 'blood_optre', 'http://localhost:8080')).toBe('http://localhost:8080/api/assets/fonts/Roboto/{range}.pbf')
+})
+
+it('captures a preview after the deadline when optional style assets never become idle', async () => {
+  vi.useFakeTimers()
+  try {
+    const { waitForPreview } = await import('./MapCanvas')
+    const waiting = waitForPreview({ once: vi.fn() } as never, 100)
+    await vi.advanceTimersByTimeAsync(100)
+    await expect(waiting).resolves.toBeUndefined()
+  } finally {
+    vi.useRealTimers()
+  }
 })
 
 it('maps GDAL raster styles and Arma coordinates to their tile pyramid', async () => {
@@ -18,6 +32,29 @@ it('maps GDAL raster styles and Arma coordinates to their tile pyramid', async (
   expect(unprojectPoint(world, [3400, 1200])).toEqual([1200, 3400])
   expect(rasterCRS(20480).latLngToPoint({ lat: 0, lng: 0 } as never, 0)).toMatchObject({ x: 0, y: 20480 })
   expect(rasterCRS(20480).latLngToPoint({ lat: 20480, lng: 20480 } as never, 0)).toMatchObject({ x: 20480, y: 0 })
+})
+
+it('resizes Leaflet when the map container changes size', async () => {
+  let resize!: ResizeObserverCallback
+  const observe = vi.fn()
+  const disconnect = vi.fn()
+  vi.stubGlobal('ResizeObserver', class {
+    constructor(callback: ResizeObserverCallback) { resize = callback }
+    observe = observe
+    disconnect = disconnect
+  })
+  try {
+    const { observeMapResize } = await import('./MapCanvas')
+    const map = { invalidateSize: vi.fn() }
+    const stop = observeMapResize(document.body, map as never)
+    expect(observe).toHaveBeenCalledWith(document.body)
+    resize([], {} as ResizeObserver)
+    expect(map.invalidateSize).toHaveBeenCalledWith({ pan: false })
+    stop()
+    expect(disconnect).toHaveBeenCalledOnce()
+  } finally {
+    vi.unstubAllGlobals()
+  }
 })
 
 it('keeps every terrain style on the page background color', async () => {
@@ -34,6 +71,22 @@ it('renders the real PlanOps marker artwork instead of its identifier', async ()
   expect(html).not.toContain('https://')
   expect(html).toContain('<span style="color:#ef4444">Danger</span>')
   expect(html).not.toContain('>mil_warning<')
+})
+
+it('calculates clockwise marker rotation from north', async () => {
+  const { markerRotation } = await import('./MapCanvas')
+  const origin = { x: 100, y: 100 }
+  expect(markerRotation(origin, { x: 100, y: 0 })).toBe(0)
+  expect(markerRotation(origin, { x: 200, y: 100 })).toBe(90)
+  expect(markerRotation(origin, { x: 100, y: 200 })).toBe(180)
+  expect(markerRotation(origin, { x: 0, y: 100 })).toBe(270)
+})
+
+it('adds a rotation circle only to the selected marker', async () => {
+  const { markerHTML } = await import('./MapCanvas')
+  const marker = { icon: 'mil_arrow', color: 'ColorBlue', label: '', rotation: 90, scale: 1 }
+  expect(markerHTML(marker)).not.toContain('rotation-control')
+  expect(markerHTML(marker, true)).toContain('<i class="rotation-control" style="transform:rotate(90deg)"></i>')
 })
 
 it('renders pink lines as pink instead of the fallback orange', async () => {

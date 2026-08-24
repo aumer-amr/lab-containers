@@ -25,7 +25,10 @@ func (s *Server) routes() http.Handler {
 	protected.HandleFunc("GET /api/me", s.me)
 	protected.HandleFunc("GET /api/worlds", s.worlds)
 	protected.HandleFunc("GET /api/worlds/{world}/assets/{asset...}", s.worldAsset)
+	protected.HandleFunc("GET /api/worlds/{world}/previews/{style}", s.worldPreview)
+	protected.HandleFunc("PUT /api/worlds/{world}/previews/{style}", s.worldPreview)
 	protected.HandleFunc("GET /api/assets/fonts/{asset...}", s.sharedAsset)
+	protected.HandleFunc("GET /api/assets/sprites/{asset...}", s.sharedSprite)
 	protected.HandleFunc("GET /api/maps", s.maps)
 	protected.HandleFunc("POST /api/maps", s.maps)
 	protected.HandleFunc("GET /api/trash", adminOnly(s.trash))
@@ -95,8 +98,14 @@ func (s *Server) worlds(w http.ResponseWriter, r *http.Request) {
 func (s *Server) worldAsset(w http.ResponseWriter, r *http.Request) {
 	serveWorldAsset(s.config.MapsPath, r.PathValue("world"), r.PathValue("asset"), w, r)
 }
+func (s *Server) worldPreview(w http.ResponseWriter, r *http.Request) {
+	serveWorldPreview(s.config.MapsPath, s.config.PreviewCachePath, r.PathValue("world"), r.PathValue("style"), w, r)
+}
 func (s *Server) sharedAsset(w http.ResponseWriter, r *http.Request) {
 	serveAsset(filepath.Join(s.config.MapsPath, "fonts"), r.PathValue("asset"), w, r)
+}
+func (s *Server) sharedSprite(w http.ResponseWriter, r *http.Request) {
+	serveAsset(filepath.Join(s.config.MapsPath, "sprites"), r.PathValue("asset"), w, r)
 }
 
 func (s *Server) maps(w http.ResponseWriter, r *http.Request) {

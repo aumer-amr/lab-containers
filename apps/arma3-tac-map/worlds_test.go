@@ -1,11 +1,60 @@
 package main
 
 import (
+	"bytes"
+	"image"
+	"image/png"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
 )
+
+func TestWorldPreviewCacheStoresValidatedPNGOutsideTerrain(t *testing.T) {
+	mapsRoot := t.TempDir()
+	cacheRoot := t.TempDir()
+	directory := filepath.Join(mapsRoot, "altis")
+	if err := os.MkdirAll(filepath.Join(directory, "styles"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(directory, "tiles"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	for path, value := range map[string]string{
+		filepath.Join(directory, "map.json"):                 `{"worldSize":30720}`,
+		filepath.Join(directory, "styles", "topo.json"):      `{"sources":{"terrain":{"url":"pmtiles://tiles/terrain.pmtiles"}}}`,
+		filepath.Join(directory, "tiles", "terrain.pmtiles"): "tile",
+	} {
+		if err := os.WriteFile(path, []byte(value), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var body bytes.Buffer
+	if err := png.Encode(&body, image.NewRGBA(image.Rect(0, 0, 320, 240))); err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodPut, "/", bytes.NewReader(body.Bytes()))
+	request.Header.Set("Content-Type", "image/png")
+	response := httptest.NewRecorder()
+	serveWorldPreview(mapsRoot, cacheRoot, "altis", "topo", response, request)
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("put status=%d body=%q", response.Code, response.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(directory, "previews", "topo.png")); !os.IsNotExist(err) {
+		t.Fatal("preview modified terrain directory")
+	}
+	response = httptest.NewRecorder()
+	serveWorldPreview(mapsRoot, cacheRoot, "altis", "topo", response, httptest.NewRequest(http.MethodGet, "/", nil))
+	if response.Code != http.StatusOK || response.Header().Get("Content-Type") != "image/png" {
+		t.Fatalf("get status=%d content-type=%q", response.Code, response.Header().Get("Content-Type"))
+	}
+	response = httptest.NewRecorder()
+	serveWorldPreview(mapsRoot, cacheRoot, "altis", "missing", response, httptest.NewRequest(http.MethodPut, "/", bytes.NewReader(body.Bytes())))
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("unknown style status=%d", response.Code)
+	}
+}
 
 func TestDiscoverWorldsRejectsIncompleteAssets(t *testing.T) {
 	root := t.TempDir()

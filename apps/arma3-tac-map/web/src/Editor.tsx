@@ -2,15 +2,27 @@ import { useEffect, useMemo, useState } from 'react'
 import { api } from './api'
 import { useCollaboration } from './collaboration'
 import { ExportDialog } from './ExportDialog'
-import { MapCanvas } from './MapCanvas'
+import { MapCanvas, renderStylePreview } from './MapCanvas'
 import { MarkerDialog } from './MarkerDialog'
 import { canManageMap, canRestore, editingEnabled, flattenAnnotations, initialVisibility, visibleLayerIDs } from './state'
 import type { Annotation, Point, Revision, TacMap, User, World } from './types'
 
 import { markerColors } from './markers'
 const terrainCategories = ['terrain', 'roads', 'buildings', 'vegetation', 'labels', 'grid']
-const tools = [{ value: 'pointer', label: 'Point', symbol: '☝' }, { value: 'marker', label: 'Marker', symbol: '⌖' }, { value: 'polyline', label: 'Line', symbol: '╱' }, { value: 'freehand', label: 'Freehand', symbol: '∿' }, { value: 'measure', label: 'Distance', symbol: '↔' }, { value: 'radius', label: 'Radius', symbol: '◯' }] as const
+const tools = [{ value: 'pointer', label: 'Point', symbol: '☝', key: 'p' }, { value: 'marker', label: 'Marker', symbol: '⌖', key: 'm' }, { value: 'rotate', label: 'Rotate', symbol: '↻', key: 'r' }, { value: 'polyline', label: 'Line', symbol: '╱', key: 'l' }, { value: 'freehand', label: 'Freehand', symbol: '∿', key: 'f' }, { value: 'measure', label: 'Distance', symbol: '↔', key: 'd' }, { value: 'radius', label: 'Radius', symbol: '◯', key: 'c' }] as const
 type ActiveTool = typeof tools[number]['value']
+
+function typingIn(target: EventTarget | null) { return target instanceof HTMLElement && (target.isContentEditable || target.matches('input, textarea, select')) }
+function styleLabel(value: string) { return value.replace(/-/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()) }
+function stylePreview(world: World, style: string, version = 0) {
+  const base = `/api/worlds/${encodeURIComponent(world.name)}/assets/`
+  let fallback = world.preview ? base + encodeURIComponent(world.preview) : ''
+  if (world.format === 'raster') {
+    const folder = ({ topo: '', 'color-relief': 'colorRelief/', 'topo-dark': 'topoDark/', 'topo-relief': 'topoRelief/' } as Record<string, string>)[style]
+    if (folder !== undefined) fallback = `${base}${folder}0/0/0.png`
+  }
+  return { src: `/api/worlds/${encodeURIComponent(world.name)}/previews/${encodeURIComponent(style)}?v=${version}`, fallback }
+}
 
 function revisionDetails(revision: Revision) {
   if (revision.kind === 'history.restore') return { title: 'Revision restored', text: '' }
@@ -41,6 +53,8 @@ export function Editor({ initial, user, world, onBack }: { initial: TacMap; user
   const [sidebarTab, setSidebarTab] = useState<'draw' | 'notes' | 'settings' | 'history' | null>('draw')
   const [exporting, setExporting] = useState(false)
   const [revisions, setRevisions] = useState<Revision[]>([])
+  const [previewBuild, setPreviewBuild] = useState<{ done: number; total: number; checking: boolean } | null>(() => world?.format === 'pmtiles' && world.styles.length > 1 ? { done: 0, total: world.styles.length, checking: true } : null)
+  const [previewVersion, setPreviewVersion] = useState(0)
   useEffect(() => { setVisibility((current) => ({ ...initialVisibility(map.layers), ...current })); if (!map.layers.some(({ id }) => id === layerID)) setLayerID(map.layers[0]?.id ?? '') }, [map.layers, layerID])
   const manager = canManageMap(user, map)
   const admin = canRestore(user)
@@ -52,18 +66,56 @@ export function Editor({ initial, user, world, onBack }: { initial: TacMap; user
   const editing = editingEnabled(collaboration.connected, map)
   const refreshHistory = () => api.revisions(map.id).then((values) => setRevisions([...values].reverse()))
   useEffect(() => {
-    const cancel = (event: KeyboardEvent) => { if (event.key === 'Escape') setActiveTool(null) }
-    window.addEventListener('keydown', cancel)
-    return () => window.removeEventListener('keydown', cancel)
-  }, [])
+    const shortcut = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { setActiveTool(null); return }
+      if (!editing || event.ctrlKey || event.metaKey || event.altKey || typingIn(event.target)) return
+      const tool = tools.find(({ key }) => key === event.key.toLowerCase())
+      if (tool) setActiveTool((current) => current === tool.value ? null : tool.value)
+    }
+    window.addEventListener('keydown', shortcut)
+    return () => window.removeEventListener('keydown', shortcut)
+  }, [editing])
   useEffect(() => {
     const frame = requestAnimationFrame(() => window.dispatchEvent(new Event('resize')))
     return () => cancelAnimationFrame(frame)
   }, [sidebarTab])
+  useEffect(() => {
+    if (!world || world.format !== 'pmtiles' || world.styles.length < 2) return
+    let active = true
+    void (async () => {
+      try {
+        const available = await Promise.all(world.styles.map((name) => api.worldPreviewExists(world.name, name)))
+        const missing = world.styles.filter((_, index) => !available[index])
+        if (!active) return
+        if (!missing.length) { setPreviewBuild(null); return }
+        setPreviewBuild({ done: 0, total: missing.length, checking: false })
+        let done = 0
+        for (const name of missing) {
+          try {
+            const preview = await renderStylePreview(world, name)
+            if (!active) return
+            await api.saveWorldPreview(world.name, name, preview)
+          } catch (error) {
+            console.warn(`Could not create ${world.name}/${name} preview`, error)
+          }
+          if (active) setPreviewBuild({ done: ++done, total: missing.length, checking: false })
+        }
+        if (active) { setPreviewVersion(Date.now()); setPreviewBuild(null) }
+      } catch (error) {
+        console.warn(`Could not check ${world.name} previews`, error)
+        if (active) setPreviewBuild(null)
+      }
+    })()
+    return () => { active = false }
+  }, [world])
 
   return <main className={`editor-shell${sidebarTab ? ' sidebar-open' : ''}`}>
     <header className="editor-header">
       <button className="back-button" onClick={onBack} aria-label="Back to maps">← <span>Maps</span></button>
+      {world && <details className="style-switcher" onMouseEnter={(event) => { event.currentTarget.open = true }} onMouseLeave={(event) => { event.currentTarget.open = false }}>
+        <summary aria-label={`Map style: ${styleLabel(style)}`}><StylePreview world={world} style={style} label="Map style" version={previewVersion} /></summary>
+        <div className="style-options">{world.styles.map((name) => <button type="button" className={name === style ? 'active' : ''} aria-pressed={name === style} key={name} onClick={() => setStyle(name)}><StylePreview world={world} style={name} label={styleLabel(name)} version={previewVersion} /></button>)}</div>
+      </details>}
       <div className="editor-title"><small>{map.world} · v{map.version}</small><h1>{map.name}</h1></div>
       <span className={`connection ${collaboration.connected ? 'online' : 'offline'}`}><i />{collaboration.connected ? 'Live' : 'Offline'}</span>
       <div className="header-actions">
@@ -81,7 +133,6 @@ export function Editor({ initial, user, world, onBack }: { initial: TacMap; user
     <aside id="draw-panel" className="sidebar" aria-label="Drawing controls" hidden={sidebarTab !== 'draw'}>
       <section className="side-section">
         <div className="side-heading"><span><small>01</small><strong>Map view</strong></span></div>
-        {world && <label>Terrain style<select value={style} onChange={(event) => setStyle(event.target.value)}>{world.styles.map((name) => <option key={name}>{name}</option>)}</select></label>}
         <fieldset className="toggle-grid"><legend>Map detail</legend>{visibleTerrainCategories.map((name) => <label key={name}><input type="checkbox" checked={categories[name]} onChange={(event) => setCategories((value) => ({ ...value, [name]: event.target.checked }))} /><span>{name}</span></label>)}</fieldset>
       </section>
 
@@ -97,13 +148,14 @@ export function Editor({ initial, user, world, onBack }: { initial: TacMap; user
 
       <section className="side-section annotation-section">
         <div className="side-heading"><span><small>03</small><strong>Draw</strong></span></div>
-        <fieldset className="tool-picker"><legend>Tool</legend>{tools.map((tool) => <button type="button" className={activeTool === tool.value ? 'active' : ''} aria-pressed={activeTool === tool.value} disabled={!editing} key={tool.value} onClick={() => setActiveTool((current) => current === tool.value ? null : tool.value)}><b aria-hidden="true">{tool.symbol}</b><span>{tool.label}</span></button>)}</fieldset>
-        <p className={`tool-hint${activeTool ? ' armed' : ''}`}>{!editing ? 'Tools unavailable while offline.' : activeTool === 'pointer' ? 'Point armed · hold mouse to share · Esc to cancel' : activeTool === 'measure' || activeTool === 'radius' ? `${tools.find(({ value }) => value === activeTool)?.label} armed · click two points · right-click or Esc to cancel` : activeTool ? `${tools.find(({ value }) => value === activeTool)?.label} armed · Esc to cancel` : 'Choose a tool, then use it directly on the map.'}</p>
+        <fieldset className="tool-picker"><legend>Tool</legend>{tools.map((tool) => <button type="button" className={activeTool === tool.value ? 'active' : ''} aria-pressed={activeTool === tool.value} aria-keyshortcuts={tool.key.toUpperCase()} disabled={!editing} key={tool.value} onClick={() => setActiveTool((current) => current === tool.value ? null : tool.value)}><b aria-hidden="true">{tool.symbol}</b><span>{tool.label}</span><kbd aria-hidden="true">{tool.key.toUpperCase()}</kbd></button>)}</fieldset>
+        <p className={`tool-hint${activeTool ? ' armed' : ''}`}>{!editing ? 'Tools unavailable while offline.' : activeTool === 'pointer' ? 'Point armed · hold mouse to share · Esc to cancel' : activeTool === 'rotate' ? 'Rotate armed · click a marker, then drag its circle · Esc to cancel' : activeTool === 'measure' || activeTool === 'radius' ? `${tools.find(({ value }) => value === activeTool)?.label} armed · click two points · right-click or Esc to cancel` : activeTool ? `${tools.find(({ value }) => value === activeTool)?.label} armed · Esc to cancel` : 'Choose a tool, then use it directly on the map.'}</p>
         {(activeTool === 'polyline' || activeTool === 'freehand' || activeTool === 'measure' || activeTool === 'radius') && <div className="control-grid"><label>Color<select value={color} onChange={(event) => setColor(event.target.value)}>{markerColors.map(([value, name]) => <option value={value} key={value}>{name}</option>)}</select></label></div>}
       </section>
     </aside>
 
     {world && map.worldAvailable ? <MapCanvas world={world} style={style} categories={categories} annotations={annotations} cursors={collaboration.cursors} editing={editing} activeTool={activeTool} layerID={layerID} color={color} icon={icon} label={label} rotation={rotation} scale={scale} onCreate={collaboration.create} onUpdate={collaboration.update} onDelete={collaboration.remove} onPlaceMarker={setPlacingMarkerAt} onEditMarker={(annotation) => { setActiveTool(null); setPlacingMarkerAt(null); setEditingMarker(annotation) }} onCursor={collaboration.cursor} /> : <section className="missing-world"><span className="empty-crosshair" aria-hidden="true" /><h2>Terrain unavailable</h2><p>Editing is disabled. Export remains available.</p></section>}
+    {previewBuild && <section className="preview-loading" role="status" aria-live="polite"><div><small>Preparing terrain</small><strong>{previewBuild.checking ? 'Checking map previews' : 'Creating map previews'}</strong><progress max={previewBuild.total} value={previewBuild.done} /><span>{previewBuild.checking ? 'Checking cache…' : `${previewBuild.done} of ${previewBuild.total}`}</span></div></section>}
 
     <aside id="notes-panel" className="sidebar notes-panel" aria-label="Map notes" hidden={sidebarTab !== 'notes'}>
       <div className="notes-heading"><h2>Notes</h2><span>{notes.length}</span></div>
@@ -138,4 +190,9 @@ export function Editor({ initial, user, world, onBack }: { initial: TacMap; user
     {placingMarkerAt && <MarkerDialog layers={map.layers} initial={{ icon, color, label, rotation, scale, layerID }} onClose={() => setPlacingMarkerAt(null)} onSubmit={(value) => { collaboration.create({ layerId: value.layerID, kind: 'marker', position: Date.now(), color: value.color, point: placingMarkerAt, icon: value.icon, label: value.label, rotation: value.rotation, scale: value.scale }); setIcon(value.icon); setColor(value.color); setLabel(value.label); setRotation(value.rotation); setScale(value.scale); setLayerID(value.layerID); setPlacingMarkerAt(null) }} />}
     {editingMarker && <MarkerDialog editing layers={map.layers} initial={{ icon: editingMarker.icon ?? 'mil_dot', color: editingMarker.color, label: editingMarker.label ?? '', rotation: editingMarker.rotation ?? 0, scale: editingMarker.scale ?? 1, layerID: editingMarker.layerId }} onClose={() => setEditingMarker(null)} onDelete={() => { collaboration.remove(editingMarker.id); setEditingMarker(null) }} onSubmit={(value) => { collaboration.update({ ...editingMarker, icon: value.icon, color: value.color, label: value.label, rotation: value.rotation, scale: value.scale, layerId: value.layerID }); setEditingMarker(null) }} />}
   </main>
+}
+
+function StylePreview({ world, style, label, version = 0 }: { world: World; style: string; label: string; version?: number }) {
+  const preview = stylePreview(world, style, version)
+  return <span className="style-preview"><img key={preview.src} src={preview.src} data-fallback={preview.fallback} alt="" onError={(event) => { const fallback = event.currentTarget.dataset.fallback; if (fallback) { event.currentTarget.dataset.fallback = ''; event.currentTarget.src = fallback } else event.currentTarget.hidden = true }} /><span>{label}</span></span>
 }
