@@ -61,7 +61,7 @@ Use `skip-changelog: true` when the app should not maintain a generated changelo
 - Repository Actions settings must allow workflows to create pull requests.
 - Review and merge that release PR to publish. Do not manually edit an established app version in `.release-please-manifest.json`; Release Please owns it after bootstrap.
 - Merging a release PR creates the component tag and GitHub Release, then builds only released apps in the same workflow.
-- Component tags use `<app>-v<version>`, for example `arma3-tac-map-v1.2.3`.
+- Component tags use `<app>-v<version>`, for example `kopia-verify-v1.2.3`.
 - Stable images receive `1.2.3`, `1.2`, `1`, and `latest`. Major tag `0` is intentionally omitted during initial `0.x` development.
 - Prereleases publish only their full version and do not move `latest` or major/minor aliases.
 - Never publish `latest` from an ordinary `main` build; only a stable release may move it.

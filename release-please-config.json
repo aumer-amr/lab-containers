@@ -9,11 +9,6 @@
       "release-type": "simple",
       "skip-changelog": true
     },
-    "apps/arma3-tac-map": {
-      "component": "arma3-tac-map",
-      "release-type": "go",
-      "skip-changelog": true
-    },
     "apps/paseo-codex": {
       "component": "paseo-codex",
       "release-type": "simple",
