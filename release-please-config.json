@@ -4,6 +4,11 @@
   "include-v-in-tag": true,
   "separate-pull-requests": true,
   "packages": {
+    "apps/codex-proxy": {
+      "component": "codex-proxy",
+      "release-type": "simple",
+      "skip-changelog": true
+    },
     "apps/kopia-verify": {
       "component": "kopia-verify",
       "release-type": "simple",
