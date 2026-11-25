@@ -1,5 +1,5 @@
 {
   "apps/codex-proxy": "0.0.0",
   "apps/kopia-verify": "0.0.0",
-  "apps/paseo-codex": "0.0.0"
+  "apps/paseo-codex": "0.17.4"
 }
