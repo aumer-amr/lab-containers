@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM ghcr.io/getpaseo/paseo:0.11.4@sha256:0e64b56fa1f99808623f4de70321cdd292e85b6db151636c13b0e6786b0e1ba5
+FROM ghcr.io/getpaseo/paseo:0.17.4@sha256:b39a2edc3eac6f1777617535fe6f685be7326f9a24b370da6db24b35c57462cb
 
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends \
