@@ -4,18 +4,29 @@ const { Version } = require('release-please/build/src/version');
 
 const paseo = 'apps/paseo-codex';
 const imageLine = /^FROM ghcr\.io\/getpaseo\/paseo:(\d+\.\d+\.\d+)@sha256:[a-f0-9]{64}$/gm;
+const codexPackage = /@openai\/codex@(\d+\.\d+\.\d+)(?=\s|$)/g;
 
 function readPin(dockerfile) {
-  const matches = [...dockerfile.matchAll(imageLine)];
-  if (matches.length !== 1) throw new Error('Expected one pinned stable Paseo base image');
-  return { line: matches[0][0], version: Version.parse(matches[0][1]) };
+  const images = [...dockerfile.matchAll(imageLine)];
+  const packages = [...dockerfile.matchAll(codexPackage)];
+  if (images.length !== 1 || packages.length !== 1) {
+    throw new Error('Expected one pinned stable Paseo image and one pinned stable Codex package');
+  }
+  return {
+    line: images[0][0],
+    codex: packages[0][0],
+    version: Version.parse(`${images[0][1]}+${packages[0][1]}`),
+  };
 }
 
 function configurePaseo(manifest, pin) {
-  const change = pin.version.compare(manifest.releasedVersions[paseo]);
-  if (change < 0) throw new Error('The upstream Paseo version is older than the release manifest');
-  if (change === 0) {
-    // Wrapper-only changes still get SHA images. A stable tag belongs to one upstream release.
+  const released = manifest.releasedVersions[paseo];
+  // SemVer ignores build metadata when comparing versions. Older releases had no Codex pin in the version.
+  const olderCodex = released.build && Version.parse(pin.version.build).compare(Version.parse(released.build)) < 0;
+  if (pin.version.compare(released) < 0 || olderCodex) {
+    throw new Error('The Paseo or Codex pin is older than the release manifest');
+  }
+  if (pin.version.toString() === released.toString()) {
     delete manifest.repositoryConfig[paseo];
     return;
   }
@@ -32,7 +43,8 @@ function configurePaseo(manifest, pin) {
         createIfMissing: false,
         updater: {
           updateContent(content) {
-            return content.replace(readPin(content).line, pin.line);
+            const current = readPin(content);
+            return content.replace(current.line, pin.line).replace(current.codex, pin.codex);
           },
         },
       });

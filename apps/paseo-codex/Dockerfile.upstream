@@ -1,2 +1,3 @@
-# Renovate proposes the next release here. Release Please promotes the full pin.
+# Renovate proposes both dependencies here. Release Please promotes them together.
 FROM ghcr.io/getpaseo/paseo:0.17.4@sha256:b39a2edc3eac6f1777617535fe6f685be7326f9a24b370da6db24b35c57462cb
+RUN npm install -g @openai/codex@0.172.0

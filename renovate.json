@@ -2,6 +2,16 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended"],
   "github-actions": { "enabled": false },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^apps/paseo-codex/Dockerfile\\.upstream$/"],
+      "matchStrings": ["RUN npm install -g @openai/codex@(?<currentValue>\\d+\\.\\d+\\.\\d+)(?:\\s|$)"],
+      "depNameTemplate": "@openai/codex",
+      "datasourceTemplate": "npm",
+      "versioningTemplate": "npm"
+    }
+  ],
   "packageRules": [
     {
       "matchPackageNames": ["ghcr.io/getpaseo/paseo"],
@@ -10,7 +20,7 @@
     },
     {
       "matchFileNames": ["apps/paseo-codex/Dockerfile.upstream"],
-      "matchPackageNames": ["ghcr.io/getpaseo/paseo"],
+      "matchPackageNames": ["ghcr.io/getpaseo/paseo", "@openai/codex"],
       "allowedVersions": "/^\\d+\\.\\d+\\.\\d+$/",
       "semanticCommits": "enabled",
       "semanticCommitType": "fix",

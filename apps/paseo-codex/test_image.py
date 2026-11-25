@@ -4,6 +4,7 @@
 import json
 import os
 from pathlib import Path
+import re
 import secrets
 import subprocess
 import sys
@@ -67,7 +68,9 @@ http.get('http://127.0.0.1:6767/api/agents', r => {
 }).on('error', e => { throw e; });
 """
         docker("exec", name, "node", "-e", verify)
-        assert "0.163.0" in docker("exec", name, "codex", "--version").stdout
+        dockerfile = Path(__file__).with_name("Dockerfile").read_text()
+        [codex_version] = re.findall(r"@openai/codex@(\d+\.\d+\.\d+)(?=\s|$)", dockerfile)
+        assert docker("exec", name, "codex", "--version").stdout.strip() == f"codex-cli {codex_version}"
         for tool in ["flux", "kustomize", "sops", "age", "oxfmt"]:
             docker("exec", name, tool, "--version" if tool != "kustomize" else "version")
         docker("exec", name, "kubectl", "version", "--client")

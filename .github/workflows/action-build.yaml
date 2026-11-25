@@ -141,13 +141,19 @@ jobs:
           ref: ${{ matrix.sha }}
 
       - name: Verify Paseo release version
+        id: paseo
         if: matrix.app == 'paseo-codex'
         env:
           VERSION: ${{ matrix.version }}
         run: |
           test "$(cat apps/paseo-codex/version.txt)" = "$VERSION"
           jq -e --arg version "$VERSION" '.["apps/paseo-codex"] == $version' .release-please-manifest.json
-          grep -Fx "FROM ghcr.io/getpaseo/paseo:$VERSION" <(cut -d@ -f1 apps/paseo-codex/Dockerfile)
+          [[ "$VERSION" =~ ^([0-9]+\.[0-9]+\.[0-9]+)\+([0-9]+\.[0-9]+\.[0-9]+)$ ]]
+          paseo_version=${BASH_REMATCH[1]}
+          codex_version=${BASH_REMATCH[2]}
+          grep -Fx "FROM ghcr.io/getpaseo/paseo:$paseo_version" <(cut -d@ -f1 apps/paseo-codex/Dockerfile)
+          grep -Fq "npm install -g @openai/codex@$codex_version " apps/paseo-codex/Dockerfile
+          echo "codex_suffix=.$codex_version" >> "$GITHUB_OUTPUT"
 
       - name: Log in to container registry
         uses: docker/login-action@v3
@@ -163,7 +169,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.app }}
           flavor: latest=auto
           tags: |
-            type=semver,pattern={{version}},value=${{ matrix.version }}
+            type=semver,pattern={{version}}${{ steps.paseo.outputs.codex_suffix }},value=${{ matrix.version }}
             type=semver,pattern={{major}}.{{minor}},value=${{ matrix.version }}
             type=semver,pattern={{major}},value=${{ matrix.version }},enable=${{ !startsWith(matrix.version, '0.') }}
 
