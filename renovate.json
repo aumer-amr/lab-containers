@@ -1,0 +1,25 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "github-actions": { "enabled": false },
+  "packageRules": [
+    {
+      "matchPackageNames": ["ghcr.io/getpaseo/paseo"],
+      "matchFileNames": ["apps/paseo-codex/Dockerfile"],
+      "enabled": false
+    },
+    {
+      "matchFileNames": ["apps/paseo-codex/Dockerfile.upstream"],
+      "matchPackageNames": ["ghcr.io/getpaseo/paseo"],
+      "allowedVersions": "/^\\d+\\.\\d+\\.\\d+$/",
+      "semanticCommits": "enabled",
+      "semanticCommitType": "fix",
+      "semanticCommitScope": "paseo-codex"
+    },
+    {
+      "matchFileNames": ["apps/paseo-codex/Dockerfile.upstream"],
+      "matchUpdateTypes": ["digest"],
+      "enabled": false
+    }
+  ]
+}
