@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM node:24.22.3-bookworm-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54 AS build
+FROM node:24.22.3-bookworm-slim@sha256:873f586f3794f52281bd039bf02c048a0be08fde619338f9941bad1eb6b34530 AS build
 
 # Upstream v0.4.8, pinned to its commit and archive checksum.
 ADD --checksum=sha256:9334b594a50fd8e25110054fbd5710dd1b1db3f7922591814d7628862432099a \
@@ -13,7 +13,7 @@ RUN tar -xzf /tmp/source.tar.gz --strip-components=1 \
     && npm test \
     && npm prune --omit=dev --ignore-scripts --no-audit --no-fund
 
-FROM node:24.22.3-bookworm-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54
+FROM node:24.22.3-bookworm-slim@sha256:873f586f3794f52281bd039bf02c048a0be08fde619338f9941bad1eb6b34530
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libatomic1 tini \
     && rm -rf /var/lib/apt/lists/* \
     && npm install -g @openai/codex@0.163.0 \
