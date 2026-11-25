@@ -5,7 +5,7 @@ USER root
 RUN apt-get update && apt-get install -y --no-install-recommends \
       libatomic1 python3 python3-yaml ripgrep unzip xz-utils \
     && rm -rf /var/lib/apt/lists/* \
-    && npm install -g @openai/codex@0.163.0 \
+    && npm install -g @openai/codex@0.172.0 \
     && npm cache clean --force
 
 RUN curl -fsSL https://github.com/jdx/mise/releases/download/v2026.10.10/mise-v2026.10.10-linux-x64.tar.xz -o /tmp/mise.tar.xz \
