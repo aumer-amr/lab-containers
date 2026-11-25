@@ -148,12 +148,12 @@ jobs:
         run: |
           test "$(cat apps/paseo-codex/version.txt)" = "$VERSION"
           jq -e --arg version "$VERSION" '.["apps/paseo-codex"] == $version' .release-please-manifest.json
-          [[ "$VERSION" =~ ^([0-9]+\.[0-9]+\.[0-9]+)\+([0-9]+\.[0-9]+\.[0-9]+)$ ]]
+          [[ "$VERSION" =~ ^([0-9]+\.[0-9]+\.[0-9]+)-([0-9]+\.[0-9]+\.[0-9]+)$ ]]
           paseo_version=${BASH_REMATCH[1]}
           codex_version=${BASH_REMATCH[2]}
           grep -Fx "FROM ghcr.io/getpaseo/paseo:$paseo_version" <(cut -d@ -f1 apps/paseo-codex/Dockerfile)
           grep -Fq "npm install -g @openai/codex@$codex_version " apps/paseo-codex/Dockerfile
-          echo "codex_suffix=.$codex_version" >> "$GITHUB_OUTPUT"
+          echo "paseo_version=$paseo_version" >> "$GITHUB_OUTPUT"
 
       - name: Log in to container registry
         uses: docker/login-action@v3
@@ -167,11 +167,12 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.app }}
-          flavor: latest=auto
+          # The verified Paseo suffix identifies stable Codex, so use Paseo for the moving aliases.
+          flavor: latest=${{ steps.paseo.outputs.paseo_version && 'true' || 'auto' }}
           tags: |
-            type=semver,pattern={{version}}${{ steps.paseo.outputs.codex_suffix }},value=${{ matrix.version }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ matrix.version }}
-            type=semver,pattern={{major}},value=${{ matrix.version }},enable=${{ !startsWith(matrix.version, '0.') }}
+            type=semver,pattern={{version}},value=${{ matrix.version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ steps.paseo.outputs.paseo_version || matrix.version }}
+            type=semver,pattern={{major}},value=${{ steps.paseo.outputs.paseo_version || matrix.version }},enable=${{ !startsWith(matrix.version, '0.') }}
 
       - name: Build and push release image
         uses: docker/build-push-action@v7

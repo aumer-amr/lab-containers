@@ -15,25 +15,28 @@ function readPin(dockerfile) {
   return {
     line: images[0][0],
     codex: packages[0][0],
-    version: Version.parse(`${images[0][1]}+${packages[0][1]}`),
+    paseoVersion: Version.parse(images[0][1]),
+    codexVersion: Version.parse(packages[0][1]),
   };
 }
 
 function configurePaseo(manifest, pin) {
-  const released = manifest.releasedVersions[paseo];
-  // SemVer ignores build metadata when comparing versions. Older releases had no Codex pin in the version.
-  const olderCodex = released.build && Version.parse(pin.version.build).compare(Version.parse(released.build)) < 0;
-  if (pin.version.compare(released) < 0 || olderCodex) {
+  const released = manifest.releasedVersions[paseo].toString();
+  const [releasedPaseo, releasedCodex] = released.split(/[+-]/);
+  // Compare the two upstream versions independently, including legacy Paseo-only releases.
+  if (pin.paseoVersion.compare(Version.parse(releasedPaseo)) < 0 ||
+      (releasedCodex && pin.codexVersion.compare(Version.parse(releasedCodex)) < 0)) {
     throw new Error('The Paseo or Codex pin is older than the release manifest');
   }
-  if (pin.version.toString() === released.toString()) {
+  const version = Version.parse(`${pin.paseoVersion}-${pin.codexVersion}`);
+  if (version.toString() === released) {
     delete manifest.repositoryConfig[paseo];
     return;
   }
 
   class PaseoRelease extends Simple {
     buildReleasePullRequest(commits, latest, draft, labels) {
-      return super.buildReleasePullRequest(commits, latest, draft, labels, { newVersion: pin.version });
+      return super.buildReleasePullRequest(commits, latest, draft, labels, { newVersion: version });
     }
 
     async buildUpdates(options) {

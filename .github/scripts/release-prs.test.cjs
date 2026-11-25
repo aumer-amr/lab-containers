@@ -1,7 +1,6 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const { Manifest } = require('release-please');
-const { Simple } = require('release-please/build/src/strategies/simple');
 const { Version } = require('release-please/build/src/version');
 const { configurePaseo, readPin } = require('./release-prs.cjs');
 
@@ -30,31 +29,39 @@ async function checkRelease(previousVersion, nextPin, expected) {
   const previous = { [path]: previousVersion, 'apps/other': '1.2.3' };
   const updated = updates['.release-please-manifest.json'].updateContent(JSON.stringify(previous));
   assert.deepEqual(JSON.parse(updated), { ...previous, [path]: expected });
-  const strategy = new Simple({
-    github, component: 'paseo-codex', path, targetBranch: 'main',
-  });
-  const release = await strategy.buildRelease({
-    title: pr.title.toString(), body: pr.body.toString(), headBranchName: pr.headRefName, sha: 'abcd',
-  });
+  const merged = {
+    ...github,
+    async *pullRequestIterator() {
+      yield {
+        title: pr.title.toString(), body: pr.body.toString(), headBranchName: pr.headRefName,
+        sha: 'abcd', labels: ['autorelease: pending'],
+      };
+    },
+  };
+  const publisher = new Manifest(merged, 'main', {
+    [path]: { ...config[path], releaseType: 'simple' },
+  }, { [path]: pr.version });
+  const [release] = await publisher.buildReleases();
   assert.equal(release.tag.toString(), 'paseo-codex-v' + expected);
+  assert.ok(!release.prerelease);
 }
 
 test('a legacy release gains the Codex version', async () => {
-  await checkRelease('0.17.4', codexUpdate, '0.17.4+0.172.0');
+  await checkRelease('0.17.4', codexUpdate, '0.17.4-0.172.0');
 });
 
-test('a Codex-only update creates a release despite equal SemVer precedence', async () => {
-  await checkRelease('0.17.4+0.163.0', codexUpdate, '0.17.4+0.172.0');
+test('a Codex-only update creates a stable release', async () => {
+  await checkRelease('0.17.4-0.163.0', codexUpdate, '0.17.4-0.172.0');
 });
 
 test('a Paseo-only update preserves the Codex version', async () => {
-  await checkRelease('0.17.4+0.163.0', paseoUpdate, '0.19.2+0.163.0');
+  await checkRelease('0.17.4-0.163.0', paseoUpdate, '0.19.2-0.163.0');
 });
 
 test('wrapper-only changes keep the released version and other apps remain eligible', () => {
   const manifest = {
     repositoryConfig: { [path]: {}, 'apps/other': {} },
-    releasedVersions: { [path]: Version.parse('0.17.4+0.163.0') },
+    releasedVersions: { [path]: Version.parse('0.17.4-0.163.0') },
   };
   configurePaseo(manifest, readPin(oldPin));
   assert.deepEqual(manifest.repositoryConfig, { 'apps/other': {} });
